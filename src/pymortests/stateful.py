@@ -14,6 +14,7 @@ from pymor.operators.constructions import VectorArrayOperator
 from pymor.reductors.basic import extend_basis
 from pymor.tools.floatcmp import float_cmp
 from pymor.vectorarrays.numpy import NumpyVectorSpace
+from pymortests.base import runmodule
 from pymortests.strategies import hy_dims, hy_float_array_elements, numpy_vector_array, vector_arrays
 
 
@@ -35,11 +36,11 @@ class BasisMachine(RuleBasedStateMachine):
         arr *= scale
         return space.from_data(arr)
 
-    @rule(basis=Bases, target=Bases)
-    def id_project(self, basis):
-        op = VectorArrayOperator(basis)
-        proj_op = project(source_basis=basis, range_basis=basis, op=op)
-        return proj_op.as_source_array()
+    # @rule(basis=Bases, target=Bases)
+    # def id_project(self, basis):
+    #     op = VectorArrayOperator(basis)
+    #     proj_op = project(source_basis=basis, range_basis=basis, op=op)
+    #     return proj_op.as_source_array()
 
     @rule(basis=Bases, target=Bases)
     def gram_schmidt(self, basis):
@@ -66,7 +67,7 @@ class BasisMachine(RuleBasedStateMachine):
         return ret
 
 
-TestBasis = BasisMachine.TestCase
+# TestBasis = BasisMachine.TestCase
 
 
 class ScalarMachine(RuleBasedStateMachine):
@@ -106,6 +107,8 @@ class ScalarMachine(RuleBasedStateMachine):
         return c
 
 
-TestScalar = ScalarMachine.TestCase
+# TestScalar = ScalarMachine.TestCase
+
+
 if __name__ == "__main__":
     runmodule(filename=__file__)

@@ -173,6 +173,7 @@ def test_superentities_entry_values_unique(grid):
                 assert S.size == np.unique(S).size
 
 
+@settings(deadline=None)
 @given(hy_grid)
 def test_superentities_entries_sorted(grid):
     g = grid

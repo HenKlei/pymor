@@ -4,7 +4,7 @@
 
 import numpy as np
 from hypothesis import assume
-from hypothesis._strategies import just, one_of, sampled_from
+from hypothesis.strategies import just, one_of, sampled_from
 from hypothesis.stateful import rule, RuleBasedStateMachine, Bundle
 
 from pymor.algorithms import gram_schmidt

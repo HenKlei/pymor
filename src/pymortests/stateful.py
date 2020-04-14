@@ -107,3 +107,5 @@ class ScalarMachine(RuleBasedStateMachine):
 
 
 TestScalar = ScalarMachine.TestCase
+if __name__ == "__main__":
+    runmodule(filename=__file__)

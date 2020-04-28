@@ -54,6 +54,8 @@ THERMALBLOCK_ARGS = (
     ('thermalblock', ['--alg=naive', '--reductor=traditional', 2, 2, 10, 5]),
 )
 
+TB_IPYTHON_ARGS = THERMALBLOCK_ARGS[0:2]
+
 THERMALBLOCK_ADAPTIVE_ARGS = (
     ('thermalblock_adaptive', [10]),
     ('thermalblock_adaptive', ['--no-visualize-refinement', 10]),
@@ -239,14 +241,14 @@ def test_analyze_pickle4():
 
 @pytest.mark.skipif(is_windows_platform(), reason='hangs indefinitely')
 @pytest.mark.skipif(is_macos_platform(), reason='spurious JSON Decode errors in Ipython launch')
-def test_thermalblock_ipython(demo_args):
-    if demo_args[0] != 'pymordemos.thermalblock':
-        return
+@pytest.mark.parametrize('ipy_args', TB_IPYTHON_ARGS)
+def test_thermalblock_ipython(ipy_args):
+    _skip_if_no_solver(ipy_args)
     from pymor.tools import mpi
     if mpi.parallel:  # simply running 'ipcluster start' (without any profile) does not seem to work
         return        # when running under mpirun, so we do not test this combination for now
     try:
-        test_demos((demo_args[0], ['--ipython-engines=2'] + demo_args[1]))
+        test_demos((f'pymordemos.{ipy_args[0]}', ['--ipython-engines=2'] + ipy_args[1]))
     finally:
         import time     # there seems to be no way to shutdown the IPyhton cluster s.t. a new
         time.sleep(10)  # cluster can be started directly afterwards, so we have to wait ...

@@ -294,9 +294,9 @@ ci_weekly 3 6:
     only:
         - schedules
     services:
-        - name: pymor/pypi-mirror_stable_py3.6:83c7ad25ee932bca5d9a24e71c71bd0071dff874
+        - name: pymor/pypi-mirror_stable_py3.6:d740c7196b6901aab305e4445b27ac18a18661ff
           alias: pypi_mirror
-    image: pymor/testing_py3.6:83c7ad25ee932bca5d9a24e71c71bd0071dff874
+    image: pymor/testing_py3.6:d740c7196b6901aab305e4445b27ac18a18661ff
     
     script: ./.ci/gitlab/test_vanilla.bash
 ci_weekly 3 7:
@@ -304,9 +304,9 @@ ci_weekly 3 7:
     only:
         - schedules
     services:
-        - name: pymor/pypi-mirror_stable_py3.7:83c7ad25ee932bca5d9a24e71c71bd0071dff874
+        - name: pymor/pypi-mirror_stable_py3.7:d740c7196b6901aab305e4445b27ac18a18661ff
           alias: pypi_mirror
-    image: pymor/testing_py3.7:83c7ad25ee932bca5d9a24e71c71bd0071dff874
+    image: pymor/testing_py3.7:d740c7196b6901aab305e4445b27ac18a18661ff
     
     script: ./.ci/gitlab/test_vanilla.bash
 ci_weekly 3 8:
@@ -314,9 +314,9 @@ ci_weekly 3 8:
     only:
         - schedules
     services:
-        - name: pymor/pypi-mirror_stable_py3.8:83c7ad25ee932bca5d9a24e71c71bd0071dff874
+        - name: pymor/pypi-mirror_stable_py3.8:d740c7196b6901aab305e4445b27ac18a18661ff
           alias: pypi_mirror
-    image: pymor/testing_py3.8:83c7ad25ee932bca5d9a24e71c71bd0071dff874
+    image: pymor/testing_py3.8:d740c7196b6901aab305e4445b27ac18a18661ff
     
     script: ./.ci/gitlab/test_vanilla.bash
 submit vanilla 3 6:

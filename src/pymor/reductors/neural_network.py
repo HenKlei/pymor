@@ -184,7 +184,9 @@ if config.HAVE_TORCH:
         def _build_rom(self):
             """Construct the reduced order model."""
             with self.logger.block('Building ROM ...'):
-                rom = NeuralNetworkModel(self.neural_network, name=f'{self.fom.name}_reduced')
+                rom = NeuralNetworkModel(self.neural_network,
+                                         scaling=self.scaling,
+                                         name=f'{self.fom.name}_reduced')
 
             return rom
 
@@ -222,6 +224,9 @@ if config.HAVE_TORCH:
 
                 self.logger.info('Starting optimization procedure ...')
 
+                mins = self.scaling['min_parameters']
+                maxs = self.scaling['max_parameters']
+
                 # perform optimization procedure
                 for epoch in range(epochs):
                     losses = {'full': 0.}
@@ -237,7 +242,8 @@ if config.HAVE_TORCH:
 
                         # iterate over batches
                         for batch in dataloaders[phase]:
-                            inputs = batch[0]
+                            # scale the inputs
+                            inputs = (batch[0] - mins) / (maxs - mins)
                             targets = batch[1]
 
                             with torch.set_grad_enabled(phase == 'train'):
@@ -294,15 +300,36 @@ if config.HAVE_TORCH:
                                            atol=self.atol / 2., l2_err=self.l2_err / 2.,
                                            **(self.pod_params or {}))
 
+                min_parameters = None
+                max_parameters = None
+                min_outputs = None
+                max_outputs = None
+
                 # determine the coefficients of the full-order solutions in the reduced basis to obtain the
                 # training data; convert everything into tensors that are compatible with PyTorch
                 for mu, u in zip(self.training_set, U):
                     mu_tensor = torch.DoubleTensor(mu.to_numpy())
+
+                    # compute minimum and maximum of parameters for scaling
+                    if min_parameters is not None:
+                        min_parameters = torch.min(min_parameters, mu_tensor)
+                    else:
+                        min_parameters = mu_tensor
+                    if max_parameters is not None:
+                        max_parameters = torch.max(max_parameters, mu_tensor)
+                    else:
+                        max_parameters = mu_tensor
+
                     u_tensor = torch.DoubleTensor(reduced_basis.inner(u)[:,0])
+
                     self.training_data.append((mu_tensor, u_tensor))
 
             # compute mean square loss
             mean_square_loss = (sum(U.norm2()) - sum(svals**2)) / len(U)
+
+            # set scaling parameters
+            self.scaling = {'min_parameters': min_parameters,
+                            'max_parameters': max_parameters}
 
             return reduced_basis, mean_square_loss
 

@@ -27,6 +27,9 @@ if config.HAVE_TORCH:
             :class:`~pymor.models.neural_network.FullyConnectedNN` with input size that
             matches the (total) number of parameters and output size equal to the
             dimension of the reduced space.
+        scaling
+            Dictionary with minimum and maximum values of parameters. The two tensors are
+            used to scale the input data properly before passing to the neural network.
         output_functional
             |Operator| mapping a given solution to the model output. In many applications,
             this will be a |Functional|, i.e. an |Operator| mapping to scalars.
@@ -51,10 +54,11 @@ if config.HAVE_TORCH:
             Name of the model.
         """
 
-        def __init__(self, neural_network, output_functional=None, products=None,
-                     error_estimator=None, visualizer=None, name=None):
+        def __init__(self, neural_network, scaling, output_functional=None,
+                     products=None, error_estimator=None, visualizer=None, name=None):
 
-            super().__init__(products=products, error_estimator=error_estimator, visualizer=visualizer, name=name)
+            super().__init__(products=products, error_estimator=error_estimator,
+                             visualizer=visualizer, name=name)
 
             self.__auto_init(locals())
             self.solution_space = NumpyVectorSpace(neural_network.output_dimension)
@@ -68,8 +72,12 @@ if config.HAVE_TORCH:
 
             # convert the parameter `mu` into a form that is usable in PyTorch
             converted_input = torch.from_numpy(mu.to_numpy()).double()
+            # scale the parameter
+            mins = self.scaling['min_parameters']
+            maxs = self.scaling['max_parameters']
+            scaled_input = (converted_input - mins) / (maxs - mins)
             # obtain (reduced) coordinates by forward pass of the parameter values through the neural network
-            U = self.neural_network(converted_input).data.numpy()
+            U = self.neural_network(scaled_input).data.numpy()
             # convert plain numpy array to element of the actual solution space
             U = self.solution_space.make_array(U)
 

@@ -226,6 +226,8 @@ if config.HAVE_TORCH:
 
                 mins = self.scaling['min_parameters']
                 maxs = self.scaling['max_parameters']
+                mins_outputs = self.scaling['min_outputs']
+                maxs_outputs = self.scaling['max_outputs']
 
                 # perform optimization procedure
                 for epoch in range(epochs):
@@ -242,9 +244,9 @@ if config.HAVE_TORCH:
 
                         # iterate over batches
                         for batch in dataloaders[phase]:
-                            # scale the inputs
+                            # scale inputs and outputs
                             inputs = (batch[0] - mins) / (maxs - mins)
-                            targets = batch[1]
+                            targets = (batch[1] - mins_outputs) / (maxs_outputs - mins_outputs)
 
                             with torch.set_grad_enabled(phase == 'train'):
                                 def closure():
@@ -322,6 +324,16 @@ if config.HAVE_TORCH:
 
                     u_tensor = torch.DoubleTensor(reduced_basis.inner(u)[:,0])
 
+                    # compute minimum and maximum of outputs/targets for scaling
+                    if min_outputs is not None:
+                        min_outputs = torch.min(min_outputs, u_tensor)
+                    else:
+                        min_outputs = u_tensor
+                    if max_outputs is not None:
+                        max_outputs = torch.max(max_outputs, u_tensor)
+                    else:
+                        max_outputs = u_tensor
+
                     self.training_data.append((mu_tensor, u_tensor))
 
             # compute mean square loss
@@ -329,7 +341,9 @@ if config.HAVE_TORCH:
 
             # set scaling parameters
             self.scaling = {'min_parameters': min_parameters,
-                            'max_parameters': max_parameters}
+                            'max_parameters': max_parameters,
+                            'min_outputs': min_outputs,
+                            'max_outputs': max_outputs}
 
             return reduced_basis, mean_square_loss
 

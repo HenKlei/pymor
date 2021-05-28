@@ -120,8 +120,8 @@ if config.HAVE_TORCH:
             torch.manual_seed(seed)
 
             # build a reduced basis using POD and compute training data
-            if not hasattr(self, 'reduced_basis'):
-                self.reduced_basis, self.mse_basis = self.build_basis()
+            if not hasattr(self, 'training_data'):
+                self.compute_training_data()
 
             layer_sizes = self._compute_layer_sizes(hidden_layers)
 
@@ -132,8 +132,7 @@ if config.HAVE_TORCH:
                     if self.validation_set:
                         self.validation_data = []
                         for mu in self.validation_set:
-                            input_ = self._get_input_compute_sample(mu)
-                            sample = self._compute_sample(**input_)
+                            sample = self._compute_sample(mu)
                             self.validation_data.extend(sample)
                     else:
                         number_validation_snapshots = int(len(self.training_data)*self.validation_ratio)
@@ -160,11 +159,9 @@ if config.HAVE_TORCH:
                                                                               neural_network, target_loss, restarts,
                                                                               training_parameters, seed)
 
-            return self._check_tolerances()
+            self._check_tolerances()
 
-        def _get_input_compute_sample(self, mu):
-            """Determine input to the `_compute_sample`-function."""
-            return {'mu': mu, 'u': self.fom.solve(mu), 'reduced_basis': self.reduced_basis}
+            return self._build_rom()
 
         def _compute_target_loss(self):
             """Compute target loss depending on value of `ann_mse`."""
@@ -183,20 +180,15 @@ if config.HAVE_TORCH:
                     if self.losses['full'] > self.ann_mse:
                         raise NeuralNetworkTrainingFailed('Could not train a neural network that '
                                                           'guarantees prescribed tolerance!')
-                    else:
-                        return self._build_rom()
                 elif self.ann_mse == 'like_basis':
                     if self.losses['full'] > self.mse_basis:
                         raise NeuralNetworkTrainingFailed('Could not train a neural network with an error as small as '
                                                           'the reduced basis error! Maybe you can try a different '
                                                           'neural network architecture or change the value of '
                                                           '`ann_mse`.')
-                    else:
-                        return self._build_rom()
                 elif self.ann_mse is None:
                     self.logger.info('Using neural network with smallest validation error ...')
                     self.logger.info(f'Finished training with a validation loss of {self.losses["val"]} ...')
-                    return self._build_rom()
                 else:
                     raise ValueError('Unknown value for mean squared error of neural network')
 
@@ -221,36 +213,38 @@ if config.HAVE_TORCH:
 
             return rom
 
-        def build_basis(self):
+        def compute_training_data(self):
             """Compute a reduced basis using proper orthogonal decomposition."""
+
+            # compute snapshots for POD and training of neural networks
+            with self.logger.block('Computing training snapshots ...'):
+                U = self.fom.solution_space.empty()
+                for mu in self.training_set:
+                    U.append(self.fom.solve(mu))
+
+            # compute reduced basis via POD
             with self.logger.block('Building reduced basis ...'):
+                self.reduced_basis, svals = pod(U, modes=self.basis_size, rtol=self.rtol / 2.,
+                                                atol=self.atol / 2., l2_err=self.l2_err / 2.,
+                                                **(self.pod_params or {}))
 
-                # compute snapshots for POD and training of neural networks
-                with self.logger.block('Computing training snapshots ...'):
-                    U = self.fom.solution_space.empty()
-                    for mu in self.training_set:
-                        U.append(self.fom.solve(mu))
-
-                # compute reduced basis via POD
-                reduced_basis, svals = pod(U, modes=self.basis_size, rtol=self.rtol / 2.,
-                                           atol=self.atol / 2., l2_err=self.l2_err / 2.,
-                                           **(self.pod_params or {}))
-
+            # compute training samples
+            with self.logger.block('Computing training samples ...'):
                 self.training_data = []
                 for mu, u in zip(self.training_set, U):
-                    sample = self._compute_sample(mu, u, reduced_basis)
+                    sample = self._compute_sample(mu, u)
                     self.training_data.extend(sample)
 
             # compute mean square loss
-            mean_square_loss = (sum(U.norm2()) - sum(svals**2)) / len(U)
+            self.mse_basis = (sum(U.norm2()) - sum(svals**2)) / len(U)
 
-            return reduced_basis, mean_square_loss
-
-        def _compute_sample(self, mu, u, reduced_basis):
+        def _compute_sample(self, mu, u=None):
             """Transform parameter and corresponding solution to |NumPy arrays|."""
             # determine the coefficients of the full-order solutions in the reduced basis to obtain
             # the training data
-            return [(mu, reduced_basis.inner(u)[:, 0])]
+            if u is None:
+                u = self.fom.solve(mu)
+            return [(mu, self.reduced_basis.inner(u)[:, 0])]
 
         def reconstruct(self, u):
             """Reconstruct high-dimensional vector from reduced vector `u`."""
@@ -286,10 +280,6 @@ if config.HAVE_TORCH:
             assert 0 < validation_ratio < 1 or validation_set
             self.__auto_init(locals())
 
-        def _get_input_compute_sample(self, mu):
-            """Determine input to the `_compute_sample`-function."""
-            return {'mu': mu}
-
         def _compute_target_loss(self):
             """Compute target loss depending on value of `ann_mse`."""
             return self.validation_loss
@@ -298,7 +288,6 @@ if config.HAVE_TORCH:
             """Check if trained neural network is sufficient to guarantee certain error bounds."""
             self.logger.info('Using neural network with smallest validation error ...')
             self.logger.info(f'Finished training with a validation loss of {self.losses["val"]} ...')
-            return self._build_rom()
 
         def _compute_layer_sizes(self, hidden_layers):
             """Compute the number of neurons in the layers of the neural network."""
@@ -320,17 +309,14 @@ if config.HAVE_TORCH:
 
         def _compute_sample(self, mu):
             """Transform parameter and corresponding output to tensors."""
-            return [(mu, self.fom.compute(output=True,  mu=mu)['output'].flatten())]
+            return [(mu, self.fom.output(mu).flatten())]
 
-        def build_basis(self):
-            # compute training data
-            if not hasattr(self, 'training_data'):
-                with self.logger.block('Computing training data ...'):
-                    self.training_data = []
-                    for mu in self.training_set:
-                        sample = self._compute_sample(mu)
-                        self.training_data.extend(sample)
-            return None, None
+        def compute_training_data(self):
+            with self.logger.block('Computing training samples ...'):
+                self.training_data = []
+                for mu in self.training_set:
+                    sample = self._compute_sample(mu)
+                    self.training_data.extend(sample)
 
     class NeuralNetworkInstationaryReductor(NeuralNetworkReductor):
         """Reduced Basis reductor for instationary problems relying on artificial neural networks.
@@ -407,44 +393,47 @@ if config.HAVE_TORCH:
 
             return rom
 
-        def build_basis(self):
+        def compute_training_data(self):
             """Compute a reduced basis using proper orthogonal decomposition."""
+
+            # compute snapshots for POD and training of neural networks
+            with self.logger.block('Computing training snapshots ...'):
+                U = self.fom.solution_space.empty()
+                for mu in self.training_set:
+                    u = self.fom.solve(mu)
+                    if hasattr(self, 'nt'):
+                        assert self.nt == len(u)
+                    else:
+                        self.nt = len(u)
+                    U.append(u)
+
+            # compute reduced basis via POD
             with self.logger.block('Building reduced basis ...'):
+                self.reduced_basis, svals = pod(U, modes=self.basis_size, rtol=self.rtol / 2.,
+                                                atol=self.atol / 2., l2_err=self.l2_err / 2.,
+                                                **(self.pod_params or {}))
 
-                # compute snapshots for POD and training of neural networks
-                with self.logger.block('Computing training snapshots ...'):
-                    U = self.fom.solution_space.empty()
-                    for mu in self.training_set:
-                        u = self.fom.solve(mu)
-                        if hasattr(self, 'nt'):
-                            assert self.nt == len(u)
-                        else:
-                            self.nt = len(u)
-                        U.append(u)
-
-                # compute reduced basis via POD
-                reduced_basis, svals = pod(U, modes=self.basis_size, rtol=self.rtol / 2.,
-                                           atol=self.atol / 2., l2_err=self.l2_err / 2.,
-                                           **(self.pod_params or {}))
-
+            # compute training samples
+            with self.logger.block('Computing training samples ...'):
                 self.training_data = []
                 for i, mu in enumerate(self.training_set):
-                    sample = self._compute_sample(mu, U[i*self.nt:(i+1)*self.nt], reduced_basis)
+                    sample = self._compute_sample(mu, U[i*self.nt:(i+1)*self.nt])
                     self.training_data.extend(sample)
 
             # compute mean square loss
-            mean_square_loss = (sum(U.norm2()) - sum(svals**2)) / len(U)
+            self.mse_basis = (sum(U.norm2()) - sum(svals**2)) / len(U)
 
-            return reduced_basis, mean_square_loss
-
-        def _compute_sample(self, mu, u, reduced_basis):
+        def _compute_sample(self, mu, u=None):
             """Transform parameter and corresponding solution to |NumPy arrays|.
 
             This function takes care of including the time instances in the inputs.
             """
+            if u is None:
+                u = self.fom.solve(mu)
+
             parameters_with_time = [mu.with_(t=t) for t in np.linspace(0, self.fom.T, self.nt)]
 
-            samples = [(mu, reduced_basis.inner(u_t)[:, 0])
+            samples = [(mu, self.reduced_basis.inner(u_t)[:, 0])
                        for mu, u_t in zip(parameters_with_time, u)]
 
             return samples

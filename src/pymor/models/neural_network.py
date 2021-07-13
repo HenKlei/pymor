@@ -2,6 +2,13 @@
 # Copyright 2013-2021 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (https://opensource.org/licenses/BSD-2-Clause)
 
+"""
+Due to an issue in autoapi, the classes `NeuralNetworkStatefreeOutputModel`,
+`NeuralNetworkInstationaryModel`, `NeuralNetworkInstationaryStatefreeOutputModel`
+and `FullyConnectedNN` do not appear in the documentation,
+see https://github.com/pymor/pymor/issues/1343.
+"""
+
 from pymor.core.config import config
 
 

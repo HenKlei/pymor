@@ -25,6 +25,11 @@ if config.HAVE_TORCH:
     from pymor.vectorarrays.numpy import NumpyVectorSpace
 
     class BaseNeuralNetworkModel(Model):
+        """Base class for models that use artificial neural networks.
+
+        This class implements the scaling methods for inputs and outputs/targets of
+        neural networks.
+        """
         def _scale_input(self, i):
             if ('min_inputs' in self.scaling_parameters and self.scaling_parameters['min_inputs'] is not None
                and 'max_inputs' in self.scaling_parameters and self.scaling_parameters['max_inputs'] is not None):
@@ -56,6 +61,12 @@ if config.HAVE_TORCH:
         parameters
             |Parameters| of the reduced order model (the same as used in the full-order
             model).
+        scaling_parameters
+            Dict of tensors that determine how to scale inputs before passing them
+            through the neural network and outputs after obtaining them from the
+            neural network. If not provided or each entry is `None`, no scaling is
+            applied. Required keys are `'min_inputs'`, `'max_inputs'`, `'min_targets'`,
+            and `'max_targets'`.
         output_functional
             |Operator| mapping a given solution to the model output. In many applications,
             this will be a |Functional|, i.e. an |Operator| mapping to scalars.
@@ -124,6 +135,12 @@ if config.HAVE_TORCH:
         parameters
             |Parameters| of the reduced order model (the same as used in the full-order
             model).
+        scaling_parameters
+            Dict of tensors that determine how to scale inputs before passing them
+            through the neural network and outputs after obtaining them from the
+            neural network. If not provided or each entry is `None`, no scaling is
+            applied. Required keys are `'min_inputs'`, `'max_inputs'`, `'min_targets'`,
+            and `'max_targets'`.
         error_estimator
             An error estimator for the problem. This can be any object with
             an `estimate_error(U, mu, m)` method. If `error_estimator` is
@@ -173,6 +190,12 @@ if config.HAVE_TORCH:
         parameters
             |Parameters| of the reduced order model (the same as used in the full-order
             model).
+        scaling_parameters
+            Dict of tensors that determine how to scale inputs before passing them
+            through the neural network and outputs after obtaining them from the
+            neural network. If not provided or each entry is `None`, no scaling is
+            applied. Required keys are `'min_inputs'`, `'max_inputs'`, `'min_targets'`,
+            and `'max_targets'`.
         output_functional
             |Operator| mapping a given solution to the model output. In many applications,
             this will be a |Functional|, i.e. an |Operator| mapping to scalars.
@@ -252,6 +275,12 @@ if config.HAVE_TORCH:
         parameters
             |Parameters| of the reduced order model (the same as used in the full-order
             model).
+        scaling_parameters
+            Dict of tensors that determine how to scale inputs before passing them
+            through the neural network and outputs after obtaining them from the
+            neural network. If not provided or each entry is `None`, no scaling is
+            applied. Required keys are `'min_inputs'`, `'max_inputs'`, `'min_targets'`,
+            and `'max_targets'`.
         error_estimator
             An error estimator for the problem. This can be any object with
             an `estimate_error(U, mu, m)` method. If `error_estimator` is

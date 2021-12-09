@@ -6,6 +6,7 @@
 import time
 import numpy as np
 from typer import Argument, run
+import matplotlib.pyplot as plt
 
 from pymor.basic import *
 from pymor.core.config import config
@@ -15,10 +16,9 @@ from pymor.reductors.neural_network import (NeuralNetworkInstationaryReductor,
 
 
 def main(
-    grid_intervals: int = Argument(..., help='Grid interval count.'),
-    time_steps: int = Argument(..., help='Number of time steps used for discretization.'),
     training_samples: int = Argument(..., help='Number of samples used for training the neural network.'),
     validation_samples: int = Argument(..., help='Number of samples used for validation during the training phase.'),
+    fom_number: int = Argument(..., help='Selects FOMs [0, 1] with scalar or vector valued outputs.')
 ):
     """Model oder reduction with neural networks for an instationary problem
 
@@ -27,15 +27,21 @@ def main(
     if not config.HAVE_TORCH:
         raise TorchMissing()
 
-    fom = create_fom(grid_intervals, time_steps)
+    assert fom_number in [0, 1], f'No FOM available for fom_number {fom_number}'
 
-    parameter_space = fom.parameters.space(1., 2.)
+    fom = create_fom(fom_number)
+
+    parameter_space = fom.parameters.space(1., 100.)
 
     training_set = parameter_space.sample_uniformly(training_samples)
     validation_set = parameter_space.sample_randomly(validation_samples)
 
-    reductor = NeuralNetworkInstationaryReductor(fom, training_set, validation_set, basis_size=10)
-    rom = reductor.reduce(hidden_layers='[30, 30, 30]', restarts=100)
+    basis_size = 10
+
+    reductor = NeuralNetworkInstationaryReductor(fom, training_set, validation_set,
+                                                 basis_size=basis_size, ann_mse=None,
+                                                 scale_inputs=True, scale_outputs=True)
+    rom = reductor.reduce(hidden_layers='[30, 30, 30]', restarts=5)
 
     test_set = parameter_space.sample_randomly(10)
 
@@ -60,9 +66,9 @@ def main(
     absolute_errors = (U - U_red).norm2()
     relative_errors = (U - U_red).norm2() / U.norm2()
 
-    output_reductor = NeuralNetworkInstationaryStatefreeOutputReductor(fom, time_steps+1, training_set,
-                                                                       validation_set, validation_loss=1e-5)
-    output_rom = output_reductor.reduce(restarts=100)
+    output_reductor = NeuralNetworkInstationaryStatefreeOutputReductor(fom, training_set, validation_set,
+                                                                       validation_loss=None)
+    output_rom = output_reductor.reduce(restarts=5)
 
     outputs = []
     outputs_red = []
@@ -98,16 +104,42 @@ def main(
     print(f'Average relative error: {np.average(outputs_relative_errors)}')
     print(f'Median of speedup: {np.median(outputs_speedups)}')
 
+    mu = parameter_space.sample_randomly(1)[0]
+    U = fom.solve(mu)
+    U_RB = reductor.reconstruct(rom.solve(mu))
+    fom.visualize((U, U_RB, U - U_RB), legend=('Detailed Solution', 'Reduced Solution', 'Error'),
+                  separate_colorbars=True)
 
-def create_fom(grid_intervals, time_steps):
-    problem = burgers_problem()
-    f = LincombFunction(
-        [ExpressionFunction('1.', 1), ConstantFunction(1., 1)],
-        [ProjectionParameterFunctional('exponent'), 0.1])
-    problem = problem.with_stationary_part(outputs=[('l2', f)])
+    for i in range(basis_size):
+        plt.figure(i)
+        plt.plot(np.linspace(0., fom.T, len(U)), reductor.reduced_basis.inner(U)[i])
+        plt.plot(np.linspace(0., fom.T, len(U)), rom.solve(mu).to_numpy()[..., i])
+        plt.legend(['orthogonal projection', 'ANN-ROM'])
+        plt.title(f"POD Mode {i}")
+        plt.show()
 
-    print('Discretize ...')
-    fom, _ = discretize_instationary_fv(problem, diameter=1. / grid_intervals, nt=time_steps)
+    o_fom = fom.compute(output=True, mu=mu)['output']
+    o_rom = output_rom.compute(output=True, mu=mu)['output']
+
+    for i in range(o_fom.shape[1]):
+        plt.figure(i + basis_size)
+        plt.plot(np.linspace(0., fom.T, len(o_fom)), o_fom[:, i])
+        plt.plot(np.linspace(0., fom.T, len(o_fom)), o_rom[:, i])
+        plt.legend(['orthogonal projection', 'ANN-ROM'])
+        plt.title(f"Output component {i}")
+        plt.show()
+
+
+def create_fom(fom_number):
+    from pymordemos.parabolic_mor import discretize_pymor
+    fom = discretize_pymor()
+
+    if fom_number == 0:
+        fom = fom.with_(output_functional=fom.rhs.operators[0].H)
+    else:
+        random_matrix_1 = np.random.rand(2, fom.solution_space.dim)
+        op = NumpyMatrixOperator(random_matrix_1, source_id='STATE')
+        fom = fom.with_(output_functional=op)
 
     return fom
 

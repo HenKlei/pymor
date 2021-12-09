@@ -38,19 +38,27 @@ def main(
 
     basis_size = 10
 
-    reductor = NeuralNetworkInstationaryReductor(fom, training_set, validation_set,
-                                                 basis_size=basis_size, ann_mse=None,
-                                                 scale_inputs=True, scale_outputs=True)
-    rom = reductor.reduce(hidden_layers='[30, 30, 30]', restarts=5)
+    ann_reductor = NeuralNetworkInstationaryReductor(fom, training_set, validation_set,
+                                                     pod_params={'product': fom.h1_0_semi_product},
+                                                     basis_size=basis_size, ann_mse=None,
+                                                     scale_inputs=True, scale_outputs=True)
+    ann_rom = ann_reductor.reduce(hidden_layers='[30, 30, 30]', restarts=5)
+
+    coercivity_estimator = ExpressionParameterFunctional('1.', fom.parameters)
+    reductor = ParabolicRBReductor(fom, product=fom.h1_0_semi_product, coercivity_estimator=coercivity_estimator)
+    reductor.extend_basis(ann_reductor.reduced_basis, method='trivial')
+    rom = reductor.reduce()
 
     test_set = parameter_space.sample_randomly(10)
 
-    speedups = []
+    speedups_ann = []
+    speedups_rom = []
 
     print(f'Performing test on set of size {len(test_set)} ...')
 
     U = fom.solution_space.empty(reserve=len(test_set))
-    U_red = fom.solution_space.empty(reserve=len(test_set))
+    U_ann_red = fom.solution_space.empty(reserve=len(test_set))
+    U_rom = fom.solution_space.empty(reserve=len(test_set))
 
     for mu in test_set:
         tic = time.time()
@@ -58,13 +66,22 @@ def main(
         time_fom = time.time() - tic
 
         tic = time.time()
-        U_red.append(reductor.reconstruct(rom.solve(mu)))
-        time_red = time.time() - tic
+        U_ann_red.append(ann_reductor.reconstruct(ann_rom.solve(mu)))
+        time_ann_red = time.time() - tic
 
-        speedups.append(time_fom / time_red)
+        speedups_ann.append(time_fom / time_ann_red)
 
-    absolute_errors = (U - U_red).norm2()
-    relative_errors = (U - U_red).norm2() / U.norm2()
+        tic = time.time()
+        U_rom.append(reductor.reconstruct(rom.solve(mu)))
+        time_rom = time.time() - tic
+
+        speedups_rom.append(time_fom / time_rom)
+
+    absolute_errors_ann = (U - U_ann_red).norm2()
+    relative_errors_ann = (U - U_ann_red).norm2() / U.norm2()
+
+    absolute_errors_rom = (U - U_rom).norm2()
+    relative_errors_rom = (U - U_rom).norm2() / U.norm2()
 
     output_reductor = NeuralNetworkInstationaryStatefreeOutputReductor(fom, training_set, validation_set,
                                                                        validation_loss=None)
@@ -93,28 +110,35 @@ def main(
     outputs_absolute_errors = np.abs(outputs - outputs_red)
     outputs_relative_errors = np.abs(outputs - outputs_red) / np.abs(outputs)
 
-    print('Results for state approximation:')
-    print(f'Average absolute error: {np.average(absolute_errors)}')
-    print(f'Average relative error: {np.average(relative_errors)}')
-    print(f'Median of speedup: {np.median(speedups)}')
+    print('Results for state approximation using ANNs:')
+    print(f'Average absolute error: {np.average(absolute_errors_ann)}')
+    print(f'Average relative error: {np.average(relative_errors_ann)}')
+    print(f'Median of speedup: {np.median(speedups_ann)}')
+
+    print('Results for state approximation using POD-Galerkin-ROM:')
+    print(f'Average absolute error: {np.average(absolute_errors_rom)}')
+    print(f'Average relative error: {np.average(relative_errors_rom)}')
+    print(f'Median of speedup: {np.median(speedups_rom)}')
 
     print()
-    print('Results for output approximation:')
+    print('Results for output approximation using ANNs:')
     print(f'Average absolute error: {np.average(outputs_absolute_errors)}')
     print(f'Average relative error: {np.average(outputs_relative_errors)}')
     print(f'Median of speedup: {np.median(outputs_speedups)}')
 
     mu = parameter_space.sample_randomly(1)[0]
     U = fom.solve(mu)
-    U_RB = reductor.reconstruct(rom.solve(mu))
-    fom.visualize((U, U_RB, U - U_RB), legend=('Detailed Solution', 'Reduced Solution', 'Error'),
+    U_ANN = ann_reductor.reconstruct(ann_rom.solve(mu))
+    U_ROM = reductor.reconstruct(rom.solve(mu))
+    fom.visualize((U, U_ANN, U_ROM, U - U_ANN, U - U_ROM), legend=('Detailed Solution', 'Reduced Solution using ANNs', 'Reduced Solution using POD-Galerkin-ROM', 'Error using ANNs', 'Error using POD-Galerkin ROM'),
                   separate_colorbars=True)
 
     for i in range(basis_size):
         plt.figure(i)
-        plt.plot(np.linspace(0., fom.T, len(U)), reductor.reduced_basis.inner(U)[i])
+        plt.plot(np.linspace(0., fom.T, len(U)), ann_reductor.reduced_basis.inner(U)[i])
+        plt.plot(np.linspace(0., fom.T, len(U)), ann_rom.solve(mu).to_numpy()[..., i])
         plt.plot(np.linspace(0., fom.T, len(U)), rom.solve(mu).to_numpy()[..., i])
-        plt.legend(['orthogonal projection', 'ANN-ROM'])
+        plt.legend(['orthogonal projection', 'ANN-ROM', 'POD-Galerkin-ROM'])
         plt.title(f"POD Mode {i}")
         plt.show()
 

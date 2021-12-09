@@ -525,9 +525,6 @@ if config.HAVE_TORCH:
         ----------
         fom
             The full-order |Model| to reduce.
-        nt
-            Number of time steps in the reduced order model (does not have to
-            coincide with the number of time steps in the full order model).
         training_set
             Set of |parameter values| to use for POD and training of the
             neural network.
@@ -547,7 +544,7 @@ if config.HAVE_TORCH:
             networks.
         """
 
-        def __init__(self, fom, nt, training_set, validation_set=None, validation_ratio=0.1,
+        def __init__(self, fom, training_set, validation_set=None, validation_ratio=0.1,
                      validation_loss=None, scale_inputs=True, scale_outputs=True):
             assert 0 < validation_ratio < 1 or validation_set
 
@@ -573,6 +570,10 @@ if config.HAVE_TORCH:
             """
             output_trajectory = self.fom.output(mu)
             output_size = output_trajectory.shape[0]
+            if hasattr(self, "nt"):
+                assert self.nt == output_size
+            else:
+                self.nt = output_size
             samples = [(mu.with_(t=t), output.flatten())
                        for t, output in zip(np.linspace(0, self.fom.T, output_size), output_trajectory)]
 

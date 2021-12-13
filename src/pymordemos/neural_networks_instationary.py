@@ -38,14 +38,16 @@ def main(
 
     basis_size = 10
 
+    product = fom.h1_0_semi_product
+
     ann_reductor = NeuralNetworkInstationaryReductor(fom, training_set, validation_set,
-                                                     pod_params={'product': fom.h1_0_semi_product},
+                                                     pod_params={'product': product},
                                                      basis_size=basis_size, ann_mse=None,
                                                      scale_inputs=True, scale_outputs=True)
     ann_rom = ann_reductor.reduce(hidden_layers='[30, 30, 30]', restarts=5)
 
     coercivity_estimator = ExpressionParameterFunctional('1.', fom.parameters)
-    reductor = ParabolicRBReductor(fom, product=fom.h1_0_semi_product, coercivity_estimator=coercivity_estimator)
+    reductor = ParabolicRBReductor(fom, product=product, coercivity_estimator=coercivity_estimator)
     reductor.extend_basis(ann_reductor.reduced_basis, method='trivial')
     rom = reductor.reduce()
 
@@ -115,6 +117,7 @@ def main(
     print(f'Average relative error: {np.average(relative_errors_ann)}')
     print(f'Median of speedup: {np.median(speedups_ann)}')
 
+    print()
     print('Results for state approximation using POD-Galerkin-ROM:')
     print(f'Average absolute error: {np.average(absolute_errors_rom)}')
     print(f'Average relative error: {np.average(relative_errors_rom)}')
@@ -135,7 +138,7 @@ def main(
 
     for i in range(basis_size):
         plt.figure(i)
-        plt.plot(np.linspace(0., fom.T, len(U)), ann_reductor.reduced_basis.inner(U)[i])
+        plt.plot(np.linspace(0., fom.T, len(U)), ann_reductor.reduced_basis.inner(U, product=product)[i])
         plt.plot(np.linspace(0., fom.T, len(U)), ann_rom.solve(mu).to_numpy()[..., i])
         plt.plot(np.linspace(0., fom.T, len(U)), rom.solve(mu).to_numpy()[..., i])
         plt.legend(['orthogonal projection', 'ANN-ROM', 'POD-Galerkin-ROM'])

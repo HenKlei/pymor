@@ -67,7 +67,7 @@ The following figure shows a simple example of a neural network with two hidden
 layers, an input size of two and an output size of three. Each edge between
 neurons has a corresponding weight that is learnable in the training phase.
 
-```{image} neural_network.png
+```{image} neural_network.svg
 :alt: Feedforward neural network
 :width: 100%
 ```
@@ -403,8 +403,8 @@ coefficients. In the same fashion, there exists a
 {class}`~pymor.reductors.neural_network.NeuralNetworkInstationaryStatefreeOutputReductor` and the
 corresponding {class}`~pymor.models.neural_network.NeuralNetworkInstationaryStatefreeOutputModel`.
 
-A slightly different approach that is also implemented in pyMOR and uses a different type of
-neural network is described in the following section.
+A slightly different approach, that is also implemented in pyMOR and uses a different type of
+neural network, is described in the following section.
 
 ### Long short-term memory neural networks for instationary problems
 
@@ -445,10 +445,10 @@ and sketched in the following figure:
 ```
 
 Here, {math}`\mu(t_k)` denotes the input of the network at the current time instance {math}`t_k`,
-while {math}`o(t_k)` denotes the output. The two hidden states for time instance `t_k` are given
-as the cell state {math}`c_k` and the hidden state {math}`h_k` that also serves as the output.
-Squares represent layers similar to those used in feedforward neural networks, where inside the
-square the applied activation function is mentioned, and circles denote element-wise
+while {math}`o(t_k)` denotes the output. The two hidden states for time instance {math}`t_k` are
+given as the cell state {math}`c_k` and the hidden state {math}`h_k` that also serves as the
+output. Squares represent layers similar to those used in feedforward neural networks, where inside
+the square the applied activation function is mentioned, and circles denote element-wise
 operations like element-wise multiplication ({math}`\times`), element-wise addition ({math}`+`) or
 element-wise application of the hyperbolic tangent function ({math}`\tanh`). The filled black
 circle represents the concatenation of the inputs. Furthermore, {math}`\sigma` is the sigmoid
@@ -515,7 +515,7 @@ output {math}`o(t_k)` that is returned and a new hidden state {math}`h_k` that c
 
 #### LSTMs for model order reduction
 The idea of the approach implemented in pyMOR is the following: Instead of passing the current
-time instance as an additional input of the neural network, we use an LSTM that takes at each time
+time instance as an additional input to the neural network, we use an LSTM that takes at each time
 instance {math}`t_k` the (potentially) time-dependent input {math}`\mu(t_k)` as an input and uses
 the hidden states of the former time step. The output {math}`o(t_k)` of the LSTM (and therefore
 also the hidden state {math}`h_k`) at time {math}`t_k` are either approximations of the reduced
@@ -526,11 +526,11 @@ output quantities (similar to the
 using a reduced basis, one can apply the 
 {class}`~pymor.reductors.neural_network.NeuralNetworkLSTMInstationaryReductor` and use the
 corresponding
-{class}`~pymor.model.neural_network.NeuralNetworkLSTMInstationaryModel`.
+{class}`~pymor.models.neural_network.NeuralNetworkLSTMInstationaryModel`.
 For a direct approximation of outputs using LSTMs, we provide the
 {class}`~pymor.models.neural_network.NeuralNetworkLSTMInstationaryStatefreeOutputModel` and the
 corresponding
-{class}`~pymor.reductor.neural_network.NeuralNetworkLSTMInstationaryStatefreeOutputReductor`.
+{class}`~pymor.reductors.neural_network.NeuralNetworkLSTMInstationaryStatefreeOutputReductor`.
 
 Download the code:
 {download}`tutorial_mor_with_anns.md`

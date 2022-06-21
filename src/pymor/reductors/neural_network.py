@@ -92,8 +92,7 @@ class NeuralNetworkReductor(BasicObject):
 
     def reduce(self, hidden_layers='[(N+P)*3, (N+P)*3]', activation_function=torch.tanh,
                optimizer=optim.LBFGS, epochs=1000, batch_size=20, learning_rate=1.,
-               loss_function=None, restarts=10, lr_scheduler=optim.lr_scheduler.StepLR,
-               lr_scheduler_params={'step_size': 10, 'gamma': 0.7},
+               loss_function=None, restarts=10, lr_scheduler=None, lr_scheduler_params={},
                es_scheduler_params={'patience': 10, 'delta': 0.}, weight_decay=0.,
                log_loss_frequency=0, seed=0):
         """Reduce by training artificial neural networks.
@@ -1342,6 +1341,11 @@ def multiple_restarts_training(training_data, validation_data, neural_network,
         best_neural_network, losses = train_neural_network(training_data, validation_data,
                                                            neural_network, training_parameters,
                                                            scaling_parameters, log_loss_frequency)
+
+        if target_loss and losses['full'] <= target_loss:
+            logger.info(f'Finished training after 0 restarts, '
+                        f'found neural network with loss of {losses["full"]:.3e} ...')
+            return best_neural_network, losses
 
     # perform multiple restarts
     for run in range(1, max_restarts + 1):

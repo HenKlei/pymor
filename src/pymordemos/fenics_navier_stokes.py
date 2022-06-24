@@ -27,9 +27,13 @@ import numpy as np
 from pymor.bindings.fenics import FenicsVectorSpace, FenicsOperator, FenicsVisualizer, FenicsMatrixOperator
 from pymor.models.basic import InstationaryModel
 from pymor.operators.constructions import VectorOperator
+from pymor.operators.ei import EmpiricalInterpolatedOperator
+from pymor.algorithms.ei import ei_greedy
+from pymor.algorithms.newton import newton
 from pymor.algorithms.timestepping import ImplicitEulerTimeStepper
-
+# ### Dolfin/Fenics
 import dolfin as df
+# ### Plotting
 import matplotlib.pyplot as plt
 
 
@@ -147,18 +151,25 @@ def main(n: int = Option(30, help='Number of mesh intervals per spatial dimensio
     # compute FOM and corresponding mixed function space
     fom, W = discretize(n, nt)
 
-    # define range for parameter
+    # define range for Reynolds number
     parameter_space = fom.parameters.space((1., 50.))
 
-    # collect FOM snapshots
+    # collect FOM snapshots and residuals
     U = fom.solution_space.empty()
+    residuals = fom.solution_space.empty()
     for mu in parameter_space.sample_uniformly(num_samples):
-        UU = fom.solve(mu)
+        UU, data = newton(fom.operator, fom.rhs.as_vector(), mu=mu, rtol=1e-6, return_residuals=True)
         U.append(UU)
+        residuals.append(data['residuals'])
+
+    # perform empirical interpolation to obtain online efficient operator representation
+    dofs, cb, _ = ei_greedy(residuals, rtol=1e-7)
+    ei_op = EmpiricalInterpolatedOperator(fom.operator, collateral_basis=cb, interpolation_dofs=dofs, triangular=True)
 
     # build reduced basis using POD
     rb, svals = pod(U, rtol=1e-7)
-    reductor = InstationaryRBReductor(fom, rb)
+    fom_ei = fom.with_(operator=ei_op)
+    reductor = InstationaryRBReductor(fom_ei, rb)
     rom = reductor.reduce()
     # the reductor currently removes all solver_options so we need to add them again
     rom = rom.with_(operator=rom.operator.with_(solver_options=fom.operator.solver_options))

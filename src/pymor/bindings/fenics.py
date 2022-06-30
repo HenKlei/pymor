@@ -419,7 +419,30 @@ class FenicsOperator(Operator):
             sub_domains = df.MeshFunction('size_t', submesh, mesh.topology().dim() - 1)
             sub_domains.array()[:] = facets_r
 
-            bc_r = df.DirichletBC(V_r_source, bc.value(), sub_domains, 1, bc.method())
+            cpp_space = bc.function_space()
+            space_r = None
+            if cpp_space is self.source.V._cpp_object:
+                space_r = V_r_source
+            else:
+                for i in range(self.source.V.num_sub_spaces()):
+                    if cpp_space is self.source.V.sub(i)._cpp_object:
+                        space_r = V_r_source.sub(i)
+                        break
+
+            if space_r is None:
+                raise ValueError('Cannot find subspace associated with DirichletBC.')
+
+            # the following wrapper class is needed to be able to pass the cpp data function
+            # back into the DirichletBC constructor, which, after some type checking,
+            # only extracts the cpp_object() of the passed object
+            class FakeUFLCoefficient(ufl.Coefficient):
+                def __init__(self, o):
+                    self._cpp_object = o
+
+                def cpp_object(self):
+                    return self._cpp_object
+
+            bc_r = df.DirichletBC(space_r, FakeUFLCoefficient(bc.value()), sub_domains, 1, bc.method())
             return bc_r
 
         return tuple(restrict_dirichlet_bc(bc) for bc in self.dirichlet_bcs)

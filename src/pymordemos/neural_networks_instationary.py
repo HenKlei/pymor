@@ -31,7 +31,7 @@ def main(
 
     fom = create_fom(grid_intervals, time_steps)
 
-    parameter_space = fom.parameters.space(1., 2.)
+    parameter_space = fom.parameters.space(1., 50.)
 
     training_set = parameter_space.sample_uniformly(training_samples)
     validation_set = parameter_space.sample_randomly(validation_samples)
@@ -47,11 +47,11 @@ def main(
 
         for mu in test_set:
             tic = time.time()
-            U.append(fom.solve(mu))
+            U.append(fom.solve(mu)[1:])
             time_fom = time.time() - tic
 
             tic = time.time()
-            U_red.append(reductor.reconstruct(rom.solve(mu)))
+            U_red.append(reductor.reconstruct(rom.solve(mu))[1:])
             time_red = time.time() - tic
 
             speedups.append(time_fom / time_red)
@@ -61,14 +61,13 @@ def main(
 
         return absolute_errors, relative_errors, speedups
 
-    reductor = NeuralNetworkInstationaryReductor(fom, training_set, validation_set, basis_size=10)
-    rom = reductor.reduce(hidden_layers='[30, 30, 30]', restarts=100)
-
+    reductor = NeuralNetworkInstationaryReductor(fom, training_set, validation_set, basis_size=10, scale_outputs=True)
+    rom = reductor.reduce(hidden_layers='[30, 30, 30]', restarts=10)
     abs_errors, rel_errors, speedups = compute_errors_state(rom, reductor)
 
-    reductor_lstm = NeuralNetworkLSTMInstationaryReductor(fom, training_set, validation_set, basis_size=10)
-    rom_lstm = reductor_lstm.reduce(restarts=100, number_layers=3)
-
+    reductor_lstm = NeuralNetworkLSTMInstationaryReductor(fom, training_set, validation_set, basis_size=10,
+                                                          scale_inputs=True, scale_outputs=True, ann_mse=None)
+    rom_lstm = reductor_lstm.reduce(restarts=10)
     abs_errors_lstm, rel_errors_lstm, speedups_lstm = compute_errors_state(rom_lstm, reductor_lstm)
 
     def compute_errors_output(output_rom):
@@ -143,14 +142,9 @@ def main(
 
 
 def create_fom(grid_intervals, time_steps):
-    problem = burgers_problem()
-    f = LincombFunction(
-        [ExpressionFunction('1.', 1), ConstantFunction(1., 1)],
-        [ProjectionParameterFunctional('exponent'), 0.1])
-    problem = problem.with_stationary_part(outputs=[('l2', f)])
-
     print('Discretize ...')
-    fom, _ = discretize_instationary_fv(problem, diameter=1. / grid_intervals, nt=time_steps)
+    from fenics_navier_stokes import discretize
+    fom, _ = discretize(grid_intervals, time_steps)
 
     return fom
 

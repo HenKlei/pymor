@@ -331,3 +331,24 @@ def heat_equation_1d_example(diameter=0.01, nt=100):
     fom, _ = discretize_instationary_cg(p, diameter=diameter, nt=nt)
 
     return fom
+
+
+def get_online_example(name, temporary_directory='temp_dir/'):
+    examples = {'CDplayer': ('https://www.slicot.org/objects/software/shared/bench-data/CDplayer.zip', 'CDplayer.mat'),
+                'ISS': ('https://www.slicot.org/objects/software/shared/bench-data/iss.zip', 'iss.mat')}
+    assert name in examples
+    example = examples[name]
+    if example[0].endswith('.zip'):
+        import io
+        import zipfile
+
+        import requests
+        r = requests.get(example[0])
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        z.extractall(temporary_directory)
+        from pymor.models.iosys import LTIModel
+        model = LTIModel.from_mat_file(temporary_directory + example[1])
+    else:
+        raise NotImplementedError
+
+    return model

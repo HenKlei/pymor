@@ -27,18 +27,21 @@ class PatchVisualizer(ImmutableObject):
     bounding_box
         A bounding box in which the grid is contained.
     backend
-        Plot backend to use ('jupyter_or_gl', 'jupyter', 'gl', 'matplotlib').
+        Plot backend to use ('jupyter_or_matplotlib', 'jupyter_or_gl', 'jupyter', 'gl',
+        'matplotlib').
     block
         If `True`, block execution until the plot window is closed.
     """
 
     @defaults('backend')
-    def __init__(self, grid, codim=2, bounding_box=None, backend='jupyter_or_gl', block=False):
+    def __init__(self, grid, codim=2, bounding_box=None, backend='jupyter_or_matplotlib', block=False):
         assert grid.reference_element in (triangle, square)
         assert grid.dim == 2
         assert codim in (0, 2)
-        assert backend in {'jupyter_or_gl', 'jupyter', 'gl', 'matplotlib'}
-        if backend == 'jupyter_or_gl':
+        assert backend in {'jupyter_or_matplotlib', 'jupyter_or_gl', 'jupyter', 'gl', 'matplotlib'}
+        if backend == 'jupyter_or_matplotlib':
+            backend = 'jupyter' if is_jupyter() else 'matplotlib'
+        elif backend == 'jupyter_or_gl':
             backend = 'jupyter' if is_jupyter() else 'gl'
         if bounding_box is None:
             bounding_box = grid.bounding_box()

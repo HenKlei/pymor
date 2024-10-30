@@ -12,6 +12,7 @@ from typer import Argument, Option, run
 from pymor.basic import *
 from pymor.core.config import config
 from pymor.core.exceptions import TorchMissingError
+from pymor.parameters.functionals import MinThetaParameterFunctional
 from pymor.reductors.neural_network import NeuralNetworkReductor, NeuralNetworkStatefreeOutputReductor
 
 
@@ -27,7 +28,7 @@ def main(
     if not config.HAVE_TORCH:
         raise TorchMissingError
 
-    fom = create_fom(fv, grid_intervals)
+    fom, mu_bar = create_fom(fv, grid_intervals)
 
     parameter_space = fom.parameters.space((0.1, 1))
 
@@ -37,12 +38,26 @@ def main(
 
     if getattr(sys, '_called_from_test', False):
         reductor = NeuralNetworkReductor(fom=fom, training_set=training_set, validation_set=validation_set,
-                                         l2_err=1e-5, ann_mse=1e-5)
+                                         l2_err=1e-5, ann_mse=1e-5, pod_params={'product': fom.energy_product})
         rom = reductor.reduce(restarts=100, log_loss_frequency=10)
+
+        coercivity_estimator = MinThetaParameterFunctional(fom.operator.coefficients, mu_bar)
+        coercive_reductor = CoerciveRBReductor(fom, RB=reductor.reduced_basis, product=fom.energy_product,
+                                               coercivity_estimator=coercivity_estimator)
+        error_estimator = coercive_reductor.assemble_error_estimator()
+        rom = rom.with_(error_estimator=error_estimator)
 
         U_red = fom.solution_space.empty(reserve=len(test_set))
         for mu in test_set:
             U_red.append(reductor.reconstruct(rom.solve(mu)))
+            print('State errors:')
+            print(f'Estimated error: {rom.estimate_error(mu)}')
+            print(f'True error: {(fom.solve(mu) - U_red[-1]).norm(product=fom.energy_product)}')
+
+            print('Output errors:')
+            print(f'Estimated error: {rom.estimate_output_error(mu)}')
+            output_error = np.abs(fom.compute(output=True, mu=mu)['output'] - rom.compute(output=True, mu=mu)['output'])
+            print(f'True error: {output_error}')
 
     training_data = []
     for mu in training_set:
@@ -138,12 +153,13 @@ def create_fom(fv, grid_intervals):
         outputs=[('l2', f), ('l2_boundary', g)],
         name='2DProblem'
     )
+    mu_bar = problem.parameters.parse([0.5])
 
     print('Discretize ...')
     discretizer = discretize_stationary_fv if fv else discretize_stationary_cg
-    fom, _ = discretizer(problem, diameter=1. / int(grid_intervals))
+    fom, _ = discretizer(problem, diameter=1. / int(grid_intervals), mu_energy_product=mu_bar)
 
-    return fom
+    return fom, mu_bar
 
 
 if __name__ == '__main__':

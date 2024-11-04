@@ -1,0 +1,67 @@
+# This file is part of the pyMOR project (https://www.pymor.org).
+# Copyright pyMOR developers and contributors. All rights reserved.
+# License: BSD 2-Clause License (https://opensource.org/licenses/BSD-2-Clause)
+
+from pymor.models.interface import Model
+
+
+class AdaptiveModelHierarchy(Model):
+    def __init__(self, models, reductors, reduction_methods, reconstruction_methods, training_frequencies, tolerance,
+                 name=None):
+        # TODO: Adaptive tolerance?!?!
+        super().__init__(name=name)
+        self.num_models = len(models)
+        self.training_data = [[] for _ in range(self.num_models)]
+        self.num_successful_calls = [0, ] * self.num_models
+
+        assert ((self.num_models - 1) == len(reductors) == len(reduction_methods) == len(reconstruction_methods)
+                == len(training_frequencies))
+        assert tolerance > 0.
+
+        self.__auto_init(locals())
+
+    def _compute(self, quantities, data, mu):
+        if 'solution' in quantities:
+            for i, model in enumerate(self.models):
+                if model is None:
+                    continue
+
+                if i != self.num_models - 1:
+                    est_err = model.estimate_error(mu=mu)
+                    rec_meth = self.reconstruction_methods[i]
+                    red = self.reductors[i]
+                else:
+                    est_err = -1
+                    def rec_meth(x, _, _i):
+                        return x
+                    red = None
+
+                if est_err <= self.tolerance:
+                    self.num_successful_calls[i] += 1
+                    sol = model.solve(mu=mu)
+                    sol = rec_meth(sol, model, red)
+                    data['solution'] = sol
+                    if i > 0:
+                        self.training_data[i-1].append((mu, sol))
+                    data['model'] = model  # also return information about which model provided the solution
+                    quantities.remove('solution')
+                    if 'solution_error_estimate' in quantities:
+                        if est_err == -1:
+                            est_err = None
+                        data['solution_error_estimate'] = est_err
+                        quantities.remove('solution_error_estimate')
+                    break
+
+            max_model_reduced = 0
+            for j, (freq, model, red_meth) in enumerate(zip(self.training_frequencies, self.models,
+                                                            self.reduction_methods)):
+                if j < i and len(self.training_data[j]) > 0 and len(self.training_data[j]) % freq == 0:
+                    self.models[j] = red_meth(self.training_data[j], self.models[j:], self.reductors[j:])
+                    max_model_reduced = j
+
+            for k in range(max_model_reduced-1, -1, -1):
+                if len(self.training_data[k]) > 0:
+                    self.models[k] = self.reduction_methods[k](self.training_data[k], self.models[k:],
+                                                               self.reductors[k:])
+
+        super()._compute(quantities, data, mu=mu)

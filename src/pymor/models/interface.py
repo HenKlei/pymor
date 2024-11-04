@@ -458,7 +458,7 @@ class Model(CacheableObject, ParametricObject):
         computing its output or other :attr:`computable_quantities`.
 
         `_compute` is passed a :class:`set` of quantities to compute.
-        If `_compute` knows how to compute a given quantities, the computed value
+        If `_compute` knows how to compute a given quantity, the computed value
         has to be added to the provided `data` dict. After that, the quantity
         should be removed from `quantities` so that a ::
 

@@ -111,7 +111,7 @@ class NeuralNetworkReductor(BasicObject):
                loss_function=None, restarts=10, lr_scheduler=optim.lr_scheduler.StepLR,
                lr_scheduler_params={'step_size': 10, 'gamma': 0.7},
                es_scheduler_params={'patience': 10, 'delta': 0.}, weight_decay=0.,
-               log_loss_frequency=0):
+               log_loss_frequency=0, recompute_training_data=False):
         """Reduce by training artificial neural networks.
 
         Parameters
@@ -176,13 +176,13 @@ class NeuralNetworkReductor(BasicObject):
         torch.manual_seed(get_seed_seq().spawn(1)[0].generate_state(1).item())
 
         # build a reduced basis using POD and compute training data
-        if not hasattr(self, 'training_data'):
+        if not hasattr(self, 'training_data') or recompute_training_data:
             self.compute_training_data()
 
         layer_sizes = self._compute_layer_sizes(hidden_layers)
 
         # compute validation data
-        if not hasattr(self, 'validation_data'):
+        if not hasattr(self, 'validation_data') or recompute_training_data:
             with self.logger.block('Computing validation snapshots ...'):
 
                 if self.validation_set:
@@ -248,7 +248,7 @@ class NeuralNetworkReductor(BasicObject):
     def compute_training_data(self):
         """Compute a reduced basis using proper orthogonal decomposition."""
         # compute snapshots for POD and training of neural networks
-        if not self.fom:
+        if not self.fom or isinstance(self.training_set[0], tuple):
             U = self.training_set[0][1].empty()
             for mu, u in self.training_set:
                 U.append(u)
@@ -259,14 +259,17 @@ class NeuralNetworkReductor(BasicObject):
                     U.append(self.fom.solve(mu))
 
         # compute reduced basis via POD
-        with self.logger.block('Building reduced basis ...'):
-            self.reduced_basis, svals = pod(U, modes=self.basis_size, rtol=self.rtol / 2.,
-                                            atol=self.atol / 2., l2_err=self.l2_err / 2.,
-                                            **(self.pod_params or {}))
+        if not self.reduced_basis:
+            with self.logger.block('Building reduced basis ...'):
+                self.reduced_basis, svals = pod(U, modes=self.basis_size, rtol=self.rtol / 2.,
+                                                atol=self.atol / 2., l2_err=self.l2_err / 2.,
+                                                **(self.pod_params or {}))
+        else:
+            svals = None
 
         # compute training samples
         with self.logger.block('Computing training samples ...'):
-            if not self.fom:
+            if not self.fom or isinstance(self.training_set[0], tuple):
                 training_set_iterable = self.training_set
             else:
                 training_set_iterable = zip(self.training_set, U)
@@ -278,11 +281,12 @@ class NeuralNetworkReductor(BasicObject):
                 self._update_scaling_parameters(sample)
                 self.training_data.extend(sample)
 
-        # set singular values as weights for the weighted MSE loss
-        self.weights = torch.Tensor(svals)
+        if svals:
+            # set singular values as weights for the weighted MSE loss
+            self.weights = torch.Tensor(svals)
 
-        # compute mean square loss
-        self.mse_basis = (sum(U.norm2()) - sum(svals**2)) / len(U)
+            # compute mean square loss
+            self.mse_basis = (sum(U.norm2()) - sum(svals**2)) / len(U)
 
     def _update_scaling_parameters(self, sample):
         """Update the quantities for scaling of inputs and outputs."""
@@ -398,6 +402,7 @@ class NeuralNetworkReductor(BasicObject):
             name = 'data_driven'
 
         with self.logger.block('Building ROM ...'):
+            print(self.neural_network)
             rom = NeuralNetworkModel(self.neural_network, parameters,
                                      scaling_parameters=self.scaling_parameters,
                                      output_functional=projected_output_functional,

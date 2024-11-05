@@ -6,7 +6,7 @@ from pymor.models.interface import Model
 
 
 class AdaptiveModelHierarchy(Model):
-    def __init__(self, models, reductors, reduction_methods, reconstruction_methods, training_frequencies, tolerance,
+    def __init__(self, models, reductors, reduction_methods, training_frequencies, tolerance,
                  name=None):
         # TODO: Adaptive tolerance?!?!
         super().__init__(name=name)
@@ -14,11 +14,14 @@ class AdaptiveModelHierarchy(Model):
         self.training_data = [[] for _ in range(self.num_models)]
         self.num_successful_calls = [0, ] * self.num_models
 
-        assert ((self.num_models - 1) == len(reductors) == len(reduction_methods) == len(reconstruction_methods)
+        assert ((self.num_models - 1) == len(reductors) == len(reduction_methods)
                 == len(training_frequencies))
         assert tolerance > 0.
 
         self.__auto_init(locals())
+
+    def reconstruct(self, u, i):
+        return self.reductors[i].reconstruct(u)
 
     def _compute(self, quantities, data, mu):
         if 'solution' in quantities:
@@ -28,18 +31,17 @@ class AdaptiveModelHierarchy(Model):
 
                 if i != self.num_models - 1:
                     est_err = model.estimate_error(mu=mu)
-                    rec_meth = self.reconstruction_methods[i]
-                    red = self.reductors[i]
+                    rec_meth = self.reductors[i].reconstruct
                 else:
                     est_err = -1
-                    def rec_meth(x, _, _i):
+
+                    def rec_meth(x):
                         return x
-                    red = None
 
                 if est_err <= self.tolerance:
                     self.num_successful_calls[i] += 1
                     sol = model.solve(mu=mu)
-                    sol = rec_meth(sol, model, red)
+                    sol = rec_meth(sol)
                     data['solution'] = sol
                     if i > 0:
                         self.training_data[i-1].append((mu, sol))

@@ -6,7 +6,7 @@ from pymor.models.interface import Model
 
 
 class AdaptiveModelHierarchy(Model):
-    def __init__(self, models, reductors, reduction_methods, training_frequencies, tolerance,
+    def __init__(self, models, reductors, reduction_methods, post_reduction_methods, training_frequencies, tolerance,
                  name=None):
         # TODO: Adaptive tolerance?!?!
         super().__init__(name=name)
@@ -42,10 +42,9 @@ class AdaptiveModelHierarchy(Model):
                     self.num_successful_calls[i] += 1
                     sol = model.solve(mu=mu)
                     sol = rec_meth(sol)
-                    data['solution'] = sol
+                    data['solution'] = (sol, i)
                     if i > 0:
                         self.training_data[i-1].append((mu, sol))
-                    data['model'] = model  # also return information about which model provided the solution
                     quantities.remove('solution')
                     if 'solution_error_estimate' in quantities:
                         if est_err == -1:
@@ -54,16 +53,12 @@ class AdaptiveModelHierarchy(Model):
                         quantities.remove('solution_error_estimate')
                     break
 
-            max_model_reduced = 0
+            # Perform training of reduced models
             for j, (freq, model, red_meth) in enumerate(zip(self.training_frequencies, self.models,
                                                             self.reduction_methods)):
                 if j < i and len(self.training_data[j]) > 0 and len(self.training_data[j]) % freq == 0:
                     self.models[j] = red_meth(self.training_data[j], self.models[j:], self.reductors[j:])
-                    max_model_reduced = j
-
-            for k in range(max_model_reduced-1, -1, -1):
-                if len(self.training_data[k]) > 0:
-                    self.models[k] = self.reduction_methods[k](self.training_data[k], self.models[k:],
-                                                               self.reductors[k:])
+                    self.models[:j] = self.post_reduction_methods[j](self.training_data[:j+1], self.models[:j+1],
+                                                                     self.reductors[:j+1])
 
         super()._compute(quantities, data, mu=mu)

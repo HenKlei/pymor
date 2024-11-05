@@ -44,6 +44,34 @@ def main(
         reductors[0].extend_basis(RB)
         return reductors[0].reduce()
 
+    def post_reduction_rb(training_data, models, reductors):
+        return []
+
+    tolerance = 5e-3
+
+    # Settings for two-stage hierarchy
+    models = [rb_reductor.reduce(), fom]
+    model_names = ['RB-ROM', 'FOM']
+    reductors = [rb_reductor]
+    reduction_methods = [reduction_rb]
+    post_reduction_methods = [post_reduction_rb]
+    training_frequencies = [1]
+
+    two_stage_hierarchy = AdaptiveModelHierarchy(models, reductors, reduction_methods, post_reduction_methods,
+                                                 training_frequencies, tolerance)
+
+    U = fom.solution_space.empty(reserve=len(parameters))
+    for mu in parameters:
+        (u, i), err_est = two_stage_hierarchy.solve(mu, return_error_estimate=True)
+        U.append(u)
+        print(f'mu: {mu}; model: {model_names[i]}; est. err.: {err_est}')
+
+    print(f'Number of successful calls per model: {two_stage_hierarchy.num_successful_calls}')
+
+    # Settings for three-stage hierarchy
+    rb_reductor = CoerciveRBReductor(fom, RB=None, product=fom.energy_product,
+                                     coercivity_estimator=coercivity_estimator)
+
     def reduction_ml(training_data, models, reductors):
         rb_rom = models[1]
         rb_reductor = reductors[1]
@@ -54,40 +82,28 @@ def main(
         ml_rom = ml_reductor.reduce(restarts=2, log_loss_frequency=10, recompute_training_data=True)
         return ml_rom.with_(error_estimator=error_estimator)
 
-    tolerance = 1e-3
+    def post_reduction_ml(training_data, models, reductors):
+        return []
 
-    # Settings for two-stage hierarchy
-    models = [rb_reductor.reduce(), fom]
-    reductors = [rb_reductor]
-    reduction_methods = [reduction_rb]
-    training_frequencies = [1]
+    def post_reduction_rb(training_data, models, reductors):
+        return [reduction_ml(training_data[1], models, reductors)]
 
-    two_stage_hierarchy = AdaptiveModelHierarchy(models, reductors, reduction_methods, training_frequencies, tolerance)
-
-    U = fom.solution_space.empty(reserve=len(parameters))
-    for mu in parameters:
-        u, err_est = two_stage_hierarchy.solve(mu, return_error_estimate=True)
-        U.append(u)
-        print(f'mu: {mu}; est. err.: {err_est}')
-
-    print(f'Number of successful calls per model: {two_stage_hierarchy.num_successful_calls}')
-
-    # Settings for three-stage hierarchy
-    rb_reductor = CoerciveRBReductor(fom, RB=None, product=fom.energy_product,
-                                     coercivity_estimator=coercivity_estimator)
     models = [None, rb_reductor.reduce(), fom]
+    model_names = ['ML-ROM', 'RB-ROM', 'FOM']
     reductors = [ml_reductor, rb_reductor]
     reduction_methods = [reduction_ml, reduction_rb]
+    post_reduction_methods = [post_reduction_ml, post_reduction_rb]
     training_frequencies = [20, 1]
 
-    three_stage_hierarchy = AdaptiveModelHierarchy(models, reductors, reduction_methods, training_frequencies,
-                                                   tolerance)
+    three_stage_hierarchy = AdaptiveModelHierarchy(models, reductors, reduction_methods, post_reduction_methods,
+                                                   training_frequencies, tolerance)
 
     U = fom.solution_space.empty(reserve=len(parameters))
     for mu in parameters:
-        u, err_est = three_stage_hierarchy.solve(mu, return_error_estimate=True)
+        (u, i), err_est = three_stage_hierarchy.solve(mu, return_error_estimate=True)
+        print(i)
         U.append(u)
-        print(f'mu: {mu}; est. err.: {err_est}')
+        print(f'mu: {mu}; model: {model_names[i]}; est. err.: {err_est}')
 
     print(f'Number of successful calls per model: {three_stage_hierarchy.num_successful_calls}')
 

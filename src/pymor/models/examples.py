@@ -335,7 +335,8 @@ def heat_equation_1d_example(diameter=0.01, nt=100):
 
 def get_online_example(name, temporary_directory='temp_dir/'):
     examples = {'CDplayer': ('https://www.slicot.org/objects/software/shared/bench-data/CDplayer.zip', 'CDplayer.mat'),
-                'ISS': ('https://www.slicot.org/objects/software/shared/bench-data/iss.zip', 'iss.mat')}
+                'ISS': ('https://www.slicot.org/objects/software/shared/bench-data/iss.zip', 'iss.mat'),
+                'Penzl': ('http://slicot.org/objects/software/shared/bench-data/fom.zip', 'fom.mat')}
     assert name in examples
     example = examples[name]
     if example[0].endswith('.zip'):

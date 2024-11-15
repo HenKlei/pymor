@@ -3,6 +3,11 @@
 # Copyright pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (https://opensource.org/licenses/BSD-2-Clause)
 
+import time
+
+import numpy as np
+from matplotlib import pyplot as plt
+from matplotlib.colors import TABLEAU_COLORS as COLORS
 from typer import Argument, Option, run
 
 from pymor.basic import *
@@ -11,6 +16,109 @@ from pymor.core.exceptions import TorchMissingError
 from pymor.models.hierarchy import AdaptiveModelHierarchy
 from pymor.parameters.functionals import MinThetaParameterFunctional
 from pymor.reductors.neural_network import NeuralNetworkReductor
+
+
+def draw_current_plot():
+    #display.clear_output(wait=True)
+    #display.display(plt.gcf())
+
+    plt.gcf().canvas.draw()
+    plt.gcf().canvas.flush_events()
+    import time
+    time.sleep(0.1)
+
+
+def adaptive_hierarchy_monte_carlo(hierarchy, model_names, parameter_space, quantity_of_interest,
+                                   max_num_samples=None, plotter=False):
+    i = 0
+    results = {'qoi': [], 'model': []}
+
+    if plotter:
+        fig, axs = plt.subplots(2, 2)
+
+        colors = list(COLORS)
+
+        ranges = list(parameter_space.ranges.values())
+        param_dim = len(ranges)
+        if param_dim in (1, 2):
+            for k, name in enumerate(model_names):
+                axs[0][0].plot([], [], c=colors[k], label=name)
+            axs[0][0].legend(loc='upper right')
+            axs[0][0].set_title('Selected parameters')
+            axs[0][0].set_xlim(ranges[0][0], ranges[0][1])
+            if param_dim == 2:
+                axs[0][0].set_ylim(ranges[1][0], ranges[1][1])
+            else:
+                axs[0][0].set_ylim(-0.1, 0.1)
+
+        axs[0][1].set_title('Quantity of interest')
+        for k, name in enumerate(model_names):
+            axs[0][1].plot([], [], c=colors[k], label=name)
+        line_expectation, = axs[0][1].plot([], [], c=colors[-2], label='Estimated expectation')
+        axs[0][1].legend(loc='upper right')
+
+        axs[1][0].set_title('Models in the hierarchy')
+        num_models = len(hierarchy.models)
+        text_elements = []
+        for k, name in enumerate(model_names):
+            elem = axs[1][0].text((k + 1.) / (num_models + 1.), 1. - (k + 1.) / (num_models + 1.), name,
+                                  ha='center', va='center', fontsize=40, color='gray',
+                                  bbox=dict(boxstyle='round', edgecolor='gray', facecolor=(0.9, 0.9, .9, .5)))
+            text_elements.append(elem)
+
+        axs[1][1].set_title('Timings')
+        for k, name in enumerate(model_names):
+            axs[1][1].plot([], [], c=colors[k], label=name)
+        axs[1][1].legend(loc='upper right')
+
+        plt.show(block=False)
+
+    expectations = []
+
+    while True:
+        if i == max_num_samples:
+            break
+
+        #time.sleep(1)
+
+        for k, elem in enumerate(text_elements):
+            elem.set_color('gray')
+        plotter()
+
+        mu = parameter_space.sample_randomly()
+        tic = time.perf_counter()
+        model_num, qoi = quantity_of_interest(hierarchy, mu)
+        required_time = time.perf_counter() - tic
+        # TODO: Put time measurement into compute method of the hierarchy
+        # to obtain the individual timings!
+
+        #time.sleep(1)
+
+        results['model'].append(model_num)
+        results['qoi'].append(qoi)
+        if plotter:
+            mu_numpy = mu.to_numpy()
+            if param_dim == 1:
+                mu_numpy = np.hstack([mu_numpy, 0.])
+            if len(mu_numpy) == 2:
+                axs[0][0].scatter(*mu_numpy, c=colors[model_num])
+
+            axs[0][1].scatter(i, qoi, c=colors[model_num])
+            if i > 0:
+                expectations.append((expectations[-1]*i + qoi) / (i+1))
+            else:
+                expectations.append(qoi)
+            line_expectation.set_xdata(np.arange(i+1))
+            line_expectation.set_ydata(expectations)
+
+            text_elements[model_num].set_color(colors[model_num])
+
+            axs[1][1].bar(i, required_time, width=1., bottom=0., align='edge', color=colors[model_num])
+
+            plotter()
+
+        i += 1
+    return results
 
 
 def main(
@@ -26,9 +134,13 @@ def main(
 
     fom, mu_bar = create_fom(fv, grid_intervals)
 
-    parameter_space = fom.parameters.space((0.1, 1))
+    def quantity_of_interest(model, mu):
+        u_mu, model_num = model.solve(mu)
+        # TODO: Implement this differently! Call model.output(mu)!
+        # To this end: Implement output method for model hierarchy!
+        return model_num, fom.output_functional.assemble(mu).apply(u_mu, mu=mu).to_numpy()
 
-    parameters = parameter_space.sample_randomly(samples)
+    parameter_space = fom.parameters.space((0.1, 1))
 
     coercivity_estimator = MinThetaParameterFunctional(fom.operator.coefficients, mu_bar)
     rb_reductor = CoerciveRBReductor(fom, RB=None, product=fom.energy_product,
@@ -49,7 +161,7 @@ def main(
 
     tolerance = 5e-3
 
-    # Settings for two-stage hierarchy
+    # Settings for the two-stage hierarchy
     models = [rb_reductor.reduce(), fom]
     model_names = ['RB-ROM', 'FOM']
     reductors = [rb_reductor]
@@ -60,15 +172,14 @@ def main(
     two_stage_hierarchy = AdaptiveModelHierarchy(models, reductors, reduction_methods, post_reduction_methods,
                                                  training_frequencies, tolerance)
 
-    U = fom.solution_space.empty(reserve=len(parameters))
-    for mu in parameters:
-        (u, i), err_est = two_stage_hierarchy.solve(mu, return_error_estimate=True)
-        U.append(u)
-        print(f'mu: {mu}; model: {model_names[i]}; est. err.: {err_est}')
+    max_num_samples = 100
 
-    print(f'Number of successful calls per model: {two_stage_hierarchy.num_successful_calls}')
+    results = adaptive_hierarchy_monte_carlo(two_stage_hierarchy, model_names, parameter_space, quantity_of_interest,
+                                             max_num_samples=max_num_samples, plotter=draw_current_plot)
+    print(results)
+    plt.show()
 
-    # Settings for three-stage hierarchy
+    # Settings for the three-stage hierarchy
     rb_reductor = CoerciveRBReductor(fom, RB=None, product=fom.energy_product,
                                      coercivity_estimator=coercivity_estimator)
 
@@ -98,14 +209,10 @@ def main(
     three_stage_hierarchy = AdaptiveModelHierarchy(models, reductors, reduction_methods, post_reduction_methods,
                                                    training_frequencies, tolerance)
 
-    U = fom.solution_space.empty(reserve=len(parameters))
-    for mu in parameters:
-        (u, i), err_est = three_stage_hierarchy.solve(mu, return_error_estimate=True)
-        print(i)
-        U.append(u)
-        print(f'mu: {mu}; model: {model_names[i]}; est. err.: {err_est}')
-
-    print(f'Number of successful calls per model: {three_stage_hierarchy.num_successful_calls}')
+    results = adaptive_hierarchy_monte_carlo(three_stage_hierarchy, model_names, parameter_space, quantity_of_interest,
+                                             max_num_samples=max_num_samples, plotter=draw_current_plot)
+    print(results)
+    plt.show()
 
 def create_fom(fv, grid_intervals):
     f = LincombFunction(

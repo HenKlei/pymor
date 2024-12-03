@@ -22,10 +22,9 @@ def draw_current_plot():
     #display.clear_output(wait=True)
     #display.display(plt.gcf())
 
+    plt.show(block=False)
     plt.gcf().canvas.draw()
     plt.gcf().canvas.flush_events()
-    import time
-    time.sleep(0.1)
 
 
 def adaptive_hierarchy_monte_carlo(hierarchy, model_names, parameter_space, quantity_of_interest,
@@ -71,7 +70,8 @@ def adaptive_hierarchy_monte_carlo(hierarchy, model_names, parameter_space, quan
             axs[1][1].plot([], [], c=colors[k], label=name)
         axs[1][1].legend(loc='upper right')
 
-        plt.show(block=False)
+        #plt.show(block=False)
+        plotter()
 
     expectations = []
 
@@ -172,10 +172,8 @@ def main(
     two_stage_hierarchy = AdaptiveModelHierarchy(models, reductors, reduction_methods, post_reduction_methods,
                                                  training_frequencies, tolerance)
 
-    max_num_samples = 100
-
     results = adaptive_hierarchy_monte_carlo(two_stage_hierarchy, model_names, parameter_space, quantity_of_interest,
-                                             max_num_samples=max_num_samples, plotter=draw_current_plot)
+                                             max_num_samples=samples, plotter=draw_current_plot)
     print(results)
     plt.show()
 
@@ -210,7 +208,7 @@ def main(
                                                    training_frequencies, tolerance)
 
     results = adaptive_hierarchy_monte_carlo(three_stage_hierarchy, model_names, parameter_space, quantity_of_interest,
-                                             max_num_samples=max_num_samples, plotter=draw_current_plot)
+                                             max_num_samples=samples, plotter=draw_current_plot)
     print(results)
     plt.show()
 

@@ -135,10 +135,13 @@ def main(
     fom, mu_bar = create_fom(fv, grid_intervals)
 
     def quantity_of_interest(model, mu):
-        u_mu, model_num = model.solve(mu)
+        data = model.compute(solution=True, mu=mu)
+        u_mu = data['solution']
+        model_num = data['model_number']
         # TODO: Implement this differently! Call model.output(mu)!
         # To this end: Implement output method for model hierarchy!
-        return model_num, fom.output_functional.assemble(mu).apply(u_mu, mu=mu).to_numpy()
+        o_mu = fom.output_functional.assemble(mu).apply(u_mu, mu=mu).to_numpy()
+        return model_num, o_mu
 
     parameter_space = fom.parameters.space((0.1, 1))
 

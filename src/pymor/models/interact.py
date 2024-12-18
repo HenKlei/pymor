@@ -6,6 +6,7 @@ from itertools import chain
 from time import perf_counter
 
 import numpy as np
+from matplotlib.colors import TABLEAU_COLORS as COLORS
 
 from pymor.core.config import config
 
@@ -142,6 +143,7 @@ class ParameterSelector(BasicObject):
             self._update_button.disabled = False
 
     def _on_update(self, b):
+        print('Button clicked')
         self._call_handlers()
 
 
@@ -251,6 +253,121 @@ def interact(model, parameter_space, show_solution=True, visualizer=None, transf
                 for l, o in zip(output_widget.children, output.ravel()):
                     l.value = str(o)
         sim_time_widget.value = f'{sim_time}s'
+
+    parameter_selector.on_change(do_update)
+
+    return widget
+
+
+def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, show_solution=True, visualizer=None):
+    """Interactively explore |Model| in jupyter environment.
+
+    This method dynamically creates a set of `ipywidgets` to interactively visualize
+    a model's solution and output.
+
+    Parameters
+    ----------
+    model
+        The |Model| to interact with.
+    parameter_space
+        |ParameterSpace| within which the |Parameters| of the model can be chosen.
+    show_solution
+        If `True`, show the model's solution for the given parameters.
+    visualizer
+        A method of the form `visualize(U, return_widget=True)` which is called to obtain
+        an `ipywidget` that renders the solution. If `None`, `model.visualize` is used.
+    transform
+        A method `transform(U, mu)` returning the data that is passed to the `visualizer`.
+        If `None` the solution `U` is passed directly.
+
+    Returns
+    -------
+    The created widgets as a single `ipywidget`.
+    """
+    assert model_hierarchy.parameters == parameter_space.parameters
+    if model_hierarchy.dim_input > 0:
+        params = Parameters(model_hierarchy.parameters, input=model_hierarchy.dim_input)
+        parameter_space = ParameterSpace(params, dict(parameter_space.ranges, input=[-1,1]))
+    right_pane = []
+    parameter_selector = ParameterSelector(parameter_space, time_dependent=not isinstance(model_hierarchy,
+                                                                                          StationaryModel))
+    right_pane.append(parameter_selector.widget)
+
+    assert len(model_names) == model_hierarchy.num_models
+
+    has_output = model_hierarchy.dim_output > 0
+    mu = parameter_selector.mu
+    input = parameter_selector.mu.get('input', None)
+    mu = Mu({k: mu.get_time_dependent_value(k) if mu.is_time_dependent(k) else mu[k]
+            for k in mu if k != 'input'})
+    data = model_hierarchy.compute(solution=show_solution, output=has_output, input=input, mu=mu)
+    mod_num = data['model_number']
+
+    colors = list(COLORS)
+
+    global_counter = 1
+
+    if has_output:
+        output = data['output']
+        dim_output = model_hierarchy.dim_output
+        from matplotlib import markers
+        marker_styles = list(markers.MarkerStyle.markers.keys())
+        if len(output) == 1:
+            from IPython import get_ipython
+            from matplotlib import pyplot as plt
+            get_ipython().run_line_magic('matplotlib', 'widget')
+            plt.ioff()
+            fig, ax_output = plt.subplots(1,1)
+            fig.canvas.header_visible = False
+            fig.canvas.layout.flex = '1 0 320px'
+            fig.set_figwidth(320 / 100)
+            fig.set_figheight(200 / 100)
+            for k, name in enumerate(model_names):
+                for i in range(dim_output):
+                    ax_output.scatter([], [], c=colors[k], marker=marker_styles[i % len(marker_styles)],
+                                      label=f'{name}: {i}')
+            fig.legend()
+            for i, o in enumerate(output[0]):
+                ax_output.scatter([global_counter], [o], c=colors[mod_num],
+                                  marker=marker_styles[i % len(marker_styles)], label=f'{model_names[mod_num]}: {i}')
+            output_widget = fig.canvas
+            right_pane.append(Accordion(titles=['output'], children=[output_widget], selected_index=0))
+
+    right_pane = VBox(right_pane)
+
+    if show_solution:
+        U = data['solution']
+        mod_num = data['model_number']
+        #U = model_hierarchy.reconstruct(U, mod_num)
+        visualizer = (visualizer or model_hierarchy.visualize)(U, return_widget=True)
+        visualizer.layout.flex = '0.6 0 auto'
+        right_pane.layout.flex = '0.4 1 auto'
+        widget = HBox([visualizer, right_pane])
+        widget.layout.grid_gap = '5%'
+    else:
+        widget = right_pane
+
+    def do_update(mu):
+        if 'input' in mu:
+            input = mu.get_time_dependent_value('input') if mu.is_time_dependent('input') else mu['input']
+        else:
+            input = None
+        mu = Mu({k: mu.get_time_dependent_value(k) if mu.is_time_dependent(k) else mu[k]
+                for k in mu if k != 'input'})
+        data = model_hierarchy.compute(solution=show_solution, output=has_output, input=input, mu=mu)
+        #global_counter += 1
+        mod_num = data['model_number']
+        if show_solution:
+            U = data['solution']
+            #U = model_hierarchy.reconstruct(U, mod_num)
+            visualizer.set(U)
+        if has_output:
+            output = data['output']
+            if len(output) == 1:
+                ax_output.scatter([global_counter], [output], c=colors[mod_num], label=model_names[mod_num])
+                low, high = ax_output.get_ylim()
+                ax_output.set_ylim(min(low, np.min(output)), max(high, np.max(output)))
+                output_widget.draw_idle()
 
     parameter_selector.on_change(do_update)
 

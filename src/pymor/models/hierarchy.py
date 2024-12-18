@@ -7,9 +7,9 @@ from pymor.models.interface import Model
 
 class AdaptiveModelHierarchy(Model):
     def __init__(self, models, reductors, reduction_methods, post_reduction_methods, training_frequencies, tolerance,
-                 name=None):
+                 name=None, visualizer=None):
         # TODO: Adaptive tolerance?!?! How to deal with training data?
-        super().__init__(name=name)
+        super().__init__(visualizer=visualizer, name=name)
         self.num_models = len(models)
         self.training_data = [[] for _ in range(self.num_models)]
         self.num_successful_calls = [0, ] * self.num_models
@@ -18,12 +18,16 @@ class AdaptiveModelHierarchy(Model):
                 == len(training_frequencies))
         assert tolerance > 0.
 
+        self.dim_output = models[-1].dim_output
+        self.output_functional = models[-1].output_functional
+
         self.__auto_init(locals())
 
     def reconstruct(self, u, i):
         return self.reductors[i].reconstruct(u)
 
     def _compute(self, quantities, data, mu):
+        print(mu)
         if 'solution' in quantities:
             for i, model in enumerate(self.models):
                 if model is None:
@@ -51,7 +55,8 @@ class AdaptiveModelHierarchy(Model):
                     # removal of previous training data;
                     # new machine learning surrogate for additional coefficients; etc.)!!!
                     sol = rec_meth(sol)
-                    data['solution'] = (sol, i)
+                    data['solution'] = sol
+                    data['model_number'] = i
                     if i > 0:
                         self.training_data[i-1].append((mu, sol))
                     quantities.remove('solution')

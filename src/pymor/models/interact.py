@@ -2,18 +2,36 @@
 # Copyright pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (https://opensource.org/licenses/BSD-2-Clause)
 
+import threading
+from functools import partial
 from itertools import chain
 from time import perf_counter
 
 import numpy as np
+import pandas as pd
 from matplotlib.colors import TABLEAU_COLORS as COLORS
 
 from pymor.core.config import config
 
 config.require('IPYWIDGETS')
 
-from IPython.display import display
-from ipywidgets import Accordion, Button, Checkbox, FloatSlider, HBox, Label, Layout, Stack, Text, VBox, jsdlink
+from IPython import display
+from ipywidgets import HTML as HTMLWIDGET
+from ipywidgets import (
+    Accordion,
+    Button,
+    Checkbox,
+    FloatLogSlider,
+    FloatSlider,
+    HBox,
+    Label,
+    Layout,
+    Output,
+    Stack,
+    Text,
+    VBox,
+    jsdlink,
+)
 
 from pymor.core.base import BasicObject
 from pymor.models.basic import StationaryModel
@@ -66,7 +84,7 @@ class ParameterSelector(BasicObject):
 
                     hboxes.append(HBox([stacks[i], checkboxes[i]]))
                 widgets = VBox(hboxes if time_dependent else sliders)
-                self.widget = Accordion(titles=[p], children=[widgets], selected_index=0)
+                self.widget = Accordion(titles=[f'Parameter: {p}'], children=[widgets], selected_index=0)
                 self._old_values = [s.value for s in sliders]
                 self.valid = True
                 self._handlers = []
@@ -121,7 +139,7 @@ class ParameterSelector(BasicObject):
         self.last_mu = self.mu
 
     def display(self):
-        return display(self.widget)
+        return display.display(self.widget)
 
     def on_change(self, handler):
         self._handlers.append(handler)
@@ -143,7 +161,6 @@ class ParameterSelector(BasicObject):
             self._update_button.disabled = False
 
     def _on_update(self, b):
-        print('Button clicked')
         self._call_handlers()
 
 
@@ -176,9 +193,9 @@ def interact(model, parameter_space, show_solution=True, visualizer=None, transf
     if model.dim_input > 0:
         params = Parameters(model.parameters, input=model.dim_input)
         parameter_space = ParameterSpace(params, dict(parameter_space.ranges, input=[-1,1]))
-    right_pane = []
+    left_pane = []
     parameter_selector = ParameterSelector(parameter_space, time_dependent=not isinstance(model, StationaryModel))
-    right_pane.append(parameter_selector.widget)
+    left_pane.append(parameter_selector.widget)
 
     has_output = model.dim_output > 0
     tic = perf_counter()
@@ -207,12 +224,12 @@ def interact(model, parameter_space, show_solution=True, visualizer=None, transf
         else:
             labels = [Text(str(o), description=f'{i}:', disabled=True) for i, o in enumerate(output.ravel())]
             output_widget = VBox(labels)
-        right_pane.append(Accordion(titles=['output'], children=[output_widget], selected_index=0))
+        left_pane.append(Accordion(titles=['output'], children=[output_widget], selected_index=0))
 
     sim_time_widget = Label(f'{sim_time}s')
-    right_pane.append(HBox([Label('simulation time:'), sim_time_widget]))
+    left_pane.append(HBox([Label('simulation time:'), sim_time_widget]))
 
-    right_pane = VBox(right_pane)
+    left_pane = VBox(left_pane)
 
     if show_solution:
         U = data['solution']
@@ -220,11 +237,11 @@ def interact(model, parameter_space, show_solution=True, visualizer=None, transf
             U = transform(U, mu)
         visualizer = (visualizer or model.visualize)(U, return_widget=True)
         visualizer.layout.flex = '0.6 0 auto'
-        right_pane.layout.flex = '0.4 1 auto'
-        widget = HBox([visualizer, right_pane])
+        left_pane.layout.flex = '0.4 1 auto'
+        widget = HBox([visualizer, left_pane])
         widget.layout.grid_gap = '5%'
     else:
-        widget = right_pane
+        widget = left_pane
 
     def do_update(mu):
         if 'input' in mu:
@@ -289,9 +306,30 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, show
         params = Parameters(model_hierarchy.parameters, input=model_hierarchy.dim_input)
         parameter_space = ParameterSpace(params, dict(parameter_space.ranges, input=[-1,1]))
     right_pane = []
+    left_pane = []
+
+    # Tolerance
+    high = 0
+    low = -6
+    tolerance_slider = FloatLogSlider(value=10**((low+high)/2), min=low, max=high, description='Tolerance:')
+    tolerance_update_button = Button(description='Update', disabled=False)
+
+    def do_tolerance_update(_):
+        tol = tolerance_slider.value
+        model_hierarchy.set_tolerance(tol)
+    do_tolerance_update(None)
+
+    tolerance_update_button.on_click(do_tolerance_update)
+    left_pane.append(Accordion(titles=['Tolerance'],
+                               children=[HBox([tolerance_slider, tolerance_update_button])],
+                               selected_index=0))
+
+    # Parameter selector
     parameter_selector = ParameterSelector(parameter_space, time_dependent=not isinstance(model_hierarchy,
                                                                                           StationaryModel))
-    right_pane.append(parameter_selector.widget)
+    left_pane.append(Accordion(titles=['Manual parameter selection'],
+                               children=[parameter_selector.widget],
+                               selected_index=0))
 
     assert len(model_names) == model_hierarchy.num_models
 
@@ -305,49 +343,150 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, show
 
     colors = list(COLORS)
 
+    global global_counter
     global_counter = 1
 
+    from IPython import get_ipython
+    from matplotlib import pyplot as plt
+    get_ipython().run_line_magic('matplotlib', 'ipympl')
+
+    outputs = []
+
+    # Solution
+    if show_solution:
+        U = data['solution']
+        mod_num = data['model_number']
+        U = model_hierarchy.reconstruct(U, mod_num)
+        visualizer = (visualizer or model_hierarchy.visualize)(U, return_widget=True)
+        visualizer.layout.flex = '0.6 0 auto'
+        right_pane.append(Accordion(titles=['Solution'], children=[visualizer], selected_index=0))
+
+    # Output
     if has_output:
         output = data['output']
         dim_output = model_hierarchy.dim_output
         from matplotlib import markers
         marker_styles = list(markers.MarkerStyle.markers.keys())
-        if len(output) == 1:
-            from IPython import get_ipython
-            from matplotlib import pyplot as plt
-            get_ipython().run_line_magic('matplotlib', 'widget')
-            plt.ioff()
-            fig, ax_output = plt.subplots(1,1)
-            fig.canvas.header_visible = False
-            fig.canvas.layout.flex = '1 0 320px'
-            fig.set_figwidth(320 / 100)
-            fig.set_figheight(200 / 100)
-            for k, name in enumerate(model_names):
-                for i in range(dim_output):
-                    ax_output.scatter([], [], c=colors[k], marker=marker_styles[i % len(marker_styles)],
-                                      label=f'{name}: {i}')
-            fig.legend()
-            for i, o in enumerate(output[0]):
-                ax_output.scatter([global_counter], [o], c=colors[mod_num],
-                                  marker=marker_styles[i % len(marker_styles)], label=f'{model_names[mod_num]}: {i}')
-            output_widget = fig.canvas
-            right_pane.append(Accordion(titles=['output'], children=[output_widget], selected_index=0))
+        assert len(output) == 1
+        outputs.append(output[0])
+        plt.ioff()
+        fig, ax_output = plt.subplots(1, 1)
+        fig.canvas.header_visible = False
+        #fig.canvas.layout.width = '50%'
+        fig.canvas.layout.flex = '1 0 320px'
+        fig.set_figwidth(320 / 100)
+        fig.set_figheight(200 / 100)
+        for k, name in enumerate(model_names):
+            for i in range(dim_output):
+                ax_output.scatter([], [], c=colors[k], marker=marker_styles[i % len(marker_styles)],
+                                  label=f'{name}{": "+str(i) if dim_output>1 else ""}')
+        fig.legend()
+        for i, o in enumerate(output[0]):
+            ax_output.scatter([global_counter], [o], c=colors[mod_num],
+                              marker=marker_styles[i % len(marker_styles)], label=f'{model_names[mod_num]}: {i}')
+        output_widget = fig.canvas
+        right_pane.append(Accordion(titles=['Output'], children=[output_widget], selected_index=0))
+
+    # Timings
+    #right_pane.append()
+
+    # Statistics
+    statistics_out = Output()
+
+    def do_update_statistics(s_out):
+        temp = np.array(model_hierarchy.num_successful_calls)
+        temp[temp == 0] = 1.
+        data_dict = {'Number of evaluations': model_hierarchy.num_successful_calls,
+                     'Average runtime': np.array(model_hierarchy.runtimes) / temp,
+                     'Training time': model_hierarchy.training_times}
+        statistics_table = pd.DataFrame(data=data_dict, index=model_names)
+        s_out.outputs = ()
+        s_out.append_display_data(statistics_table)
+
+    do_update_statistics(statistics_out)
+    right_pane.append(Accordion(titles=['Evaluation statistics'], children=[statistics_out], selected_index=0))
+
+    # Model information
+    model_information_out = Output()
+
+    def do_update_model_information(m_out):
+        model_information_table = VBox([HTMLWIDGET(value=f'<p><b>{model_name}:</b> {model}</p>',
+                                                   layout=Layout(width='90%'))
+                                        for model_name, model in zip(model_names, model_hierarchy.models)])
+        m_out.outputs = ()
+        m_out.append_display_data(model_information_table)
+
+    do_update_model_information(model_information_out)
+    right_pane.append(Accordion(titles=['Information on models'], children=[model_information_out], selected_index=0))
+
+    # Scenarios
+    scenarios = []
+    ## Monte Carlo
+    button_start_monte_carlo = Button(description='Start', disabled=False)
+    button_stop_monte_carlo = Button(description='Stop', disabled=True)
+    label_current_number_samples = Label('Number of samples: ')
+    label_current_estimated_mean = Label(f'Current estimated mean{"s" if dim_output>1 else ""}: ')
+    label_current_estimated_variance = Label(f'Current estimated variance{"s" if dim_output>1 else ""}: ')
+    current_number_samples = Label('0')
+    current_estimated_mean = Label('-')
+    current_estimated_variance = Label('-')
+    global monte_carlo_running
+    monte_carlo_running = False
+
+    scenarios.append(VBox([HBox([button_start_monte_carlo, button_stop_monte_carlo]),
+                           HBox([label_current_number_samples, current_number_samples]),
+                           HBox([label_current_estimated_mean, current_estimated_mean]),
+                           HBox([label_current_estimated_variance, current_estimated_variance])]))
+    ## Parameter optimization
+    scenarios.append(VBox())
+
+    scenarios_accordion = Accordion(titles=['Application scenarios'],
+                                    children=[Accordion(titles=['Monte Carlo estimation', 'Parameter optimization'],
+                                                        children=scenarios, selected_index=0)],
+                                    selected_index=0)
+
+    def run_monte_carlo(s_out, m_out):
+        global monte_carlo_running
+        while monte_carlo_running:
+            mu = parameter_space.sample_randomly()
+            do_parameter_update(mu, s_out, m_out)
+
+    def do_start_monte_carlo(_):
+        global monte_carlo_running
+        if not monte_carlo_running:
+            monte_carlo_running = True
+        button_start_monte_carlo.disabled = True
+        button_stop_monte_carlo.disabled = False
+        scenarios_accordion.children[0].set_title(0, 'Running: Monte Carlo estimation')
+
+        thread_monte_carlo = threading.Thread(target=run_monte_carlo, args=(statistics_out, model_information_out))
+        if not thread_monte_carlo.is_alive():
+            thread_monte_carlo.start()
+
+    def do_stop_monte_carlo(_):
+        global monte_carlo_running
+        if monte_carlo_running:
+            monte_carlo_running = False
+        button_start_monte_carlo.disabled = False
+        button_stop_monte_carlo.disabled = True
+        scenarios_accordion.children[0].set_title(0, 'Monte Carlo estimation')
+
+    button_start_monte_carlo.on_click(do_start_monte_carlo)
+    button_stop_monte_carlo.on_click(do_stop_monte_carlo)
+
+    left_pane.append(scenarios_accordion)
 
     right_pane = VBox(right_pane)
+    right_pane.layout.width = '50%'
+    left_pane = VBox(left_pane)
+    left_pane.layout.width = '50%'
+    widget = HBox([left_pane, right_pane])
+    widget.layout.grid_gap = '2%'
 
-    if show_solution:
-        U = data['solution']
-        mod_num = data['model_number']
-        #U = model_hierarchy.reconstruct(U, mod_num)
-        visualizer = (visualizer or model_hierarchy.visualize)(U, return_widget=True)
-        visualizer.layout.flex = '0.6 0 auto'
-        right_pane.layout.flex = '0.4 1 auto'
-        widget = HBox([visualizer, right_pane])
-        widget.layout.grid_gap = '5%'
-    else:
-        widget = right_pane
+    def do_parameter_update(mu, s_out, m_out):
+        global global_counter
+        global_counter = global_counter + 1
 
-    def do_update(mu):
         if 'input' in mu:
             input = mu.get_time_dependent_value('input') if mu.is_time_dependent('input') else mu['input']
         else:
@@ -355,20 +494,41 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, show
         mu = Mu({k: mu.get_time_dependent_value(k) if mu.is_time_dependent(k) else mu[k]
                 for k in mu if k != 'input'})
         data = model_hierarchy.compute(solution=show_solution, output=has_output, input=input, mu=mu)
-        #global_counter += 1
         mod_num = data['model_number']
         if show_solution:
             U = data['solution']
-            #U = model_hierarchy.reconstruct(U, mod_num)
-            visualizer.set(U)
+            visualizer.set(model_hierarchy.reconstruct(U, mod_num))
         if has_output:
             output = data['output']
-            if len(output) == 1:
-                ax_output.scatter([global_counter], [output], c=colors[mod_num], label=model_names[mod_num])
-                low, high = ax_output.get_ylim()
-                ax_output.set_ylim(min(low, np.min(output)), max(high, np.max(output)))
-                output_widget.draw_idle()
+            assert len(output) == 1
+            outputs.append(output[0])
+            for i, o in enumerate(output[0]):
+                ax_output.scatter([global_counter], [o], c=colors[mod_num],
+                                  marker=marker_styles[i % len(marker_styles)],
+                                  label=f'{model_names[mod_num]}{": "+str(i) if dim_output>1 else ""}')
+            low, high = ax_output.get_ylim()
+            ax_output.set_ylim(min(low, np.min(output)), max(high, np.max(output)))
+            output_widget.draw()
+            global monte_carlo_running
+            if monte_carlo_running:
+                current_number_samples.value = str(len(outputs))
+                current_estimated_mean.value = str(np.mean(np.array(outputs), axis=0))
+                current_estimated_variance.value = str(np.var(np.array(outputs), axis=0))
+                # TODO: Add estimates to output plot!
 
-    parameter_selector.on_change(do_update)
+        do_update_statistics(s_out)
+        do_update_model_information(m_out)
+
+    parameter_selector.on_change(partial(do_parameter_update, s_out=statistics_out, m_out=model_information_out))
 
     return widget
+
+
+    # TODO: Mention current status (solving, training, estimating, etc.) somewhere
+    # TODO: Plot error estimates somewhere
+    # TODO: Add estimates of mean and variance to plot
+    # TODO: Implement parameter optimization example
+    # TODO: Plot tolerance in same plot as error estimates
+    # TODO: Change parameter sliders when using Monte Carlo
+    # TODO: If 2d parameter space: Select parameter by clicking on parameter set
+    # + visualize selected parameters + non-uniform density for parameter selection in Monte Carlo

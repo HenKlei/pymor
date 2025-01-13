@@ -46,6 +46,9 @@ class AdaptiveModelHierarchy(Model):
 
     def _compute(self, quantities, data, mu):
         if 'solution' in quantities:
+            data['error_estimates'] = []
+            data['runtimes'] = [0, ] * self.num_models
+            data['training_times'] = [0, ] * self.num_models
             for i, model in enumerate(self.models):
                 if model is None:
                     continue
@@ -53,18 +56,24 @@ class AdaptiveModelHierarchy(Model):
                 if i != self.num_models - 1:
                     tic = time.perf_counter()
                     est_err = model.estimate_error(mu=mu)
-                    self.runtimes[i] += time.perf_counter() - tic
+                    runtime = time.perf_counter() - tic
+                    self.runtimes[i] += runtime
+                    data['runtimes'][i] = runtime
                     self.num_error_estimates[i] += 1
+                    data['error_estimates'].append(est_err)
                 else:
                     est_err = -1
+                    data['runtimes'][i] = 0.
 
                 if est_err <= self.get_tolerance():
                     self.num_successful_calls[i] += 1
                     tic = time.perf_counter()
                     sol = model.solve(mu=mu)
                     toc = time.perf_counter()
-                    self.runtimes[i] += toc - tic
-                    data['solution_time'] = toc - tic
+                    runtime = toc - tic
+                    self.runtimes[i] += runtime
+                    data['solution_time'] = runtime
+                    data['runtimes'][i] += runtime
                     # TODO: Avoid necessity of reconstruction!!!
                     # If doing so: Make sure to provide information about model that produced
                     # the result and about the reductor that can be used for reconstruction!!!
@@ -97,12 +106,16 @@ class AdaptiveModelHierarchy(Model):
                                               self.models[j:], self.reductors[j:])
                     self.models[:j] = self.post_reduction_methods[j](self.training_data[:j+1], self.models[:j+1],
                                                                      self.reductors[:j+1])
-                    toc = time.perf_counter()
-                    self.training_times[j] += toc - tic
-            data['training_time'] = toc - tic
+                    training_time = time.perf_counter() - tic
+                    self.training_times[j] += training_time
+                    data['training_times'][j] += training_time
 
         if 'output' in quantities:
+            tic = time.perf_counter()
             data['output'] = self.models[model_number].compute(data={'solution': sol}, output=True, mu=mu)['output']
+            runtime = time.perf_counter() - tic
+            self.runtimes[model_number] += runtime
+            data['runtimes'][model_number] += runtime
             quantities.remove('output')
 
         super()._compute(quantities, data, mu=mu)

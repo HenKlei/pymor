@@ -98,6 +98,16 @@ class NeuralNetworkModel(BaseNeuralNetworkModel):
         self.output_functional = output_functional or ZeroOperator(NumpyVectorSpace(0), self.solution_space)
         assert self.output_functional.source == self.solution_space
         self.dim_output = self.output_functional.range.dim
+        self.linear = self.output_functional.linear
+
+    def __str__(self):
+        return (
+            f'{self.name}\n'
+            f'    class: {self.__class__.__name__}\n'
+            f'    {"linear" if self.linear else "non-linear"}\n'
+            f'    solution_space:  {self.solution_space}\n'
+            f'    dim_output:      {self.dim_output}'
+        )
 
     def _compute(self, quantities, data, mu):
         if 'solution' in quantities:

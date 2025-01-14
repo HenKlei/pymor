@@ -490,7 +490,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, show
     for k, name in enumerate(model_names[:-1]):
         ax_error_estimates.scatter([], [], c=colors[k], label=f'{name}')
     for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names[:-1])):
-        ax_error_estimates.scatter([global_counter], [est_err], c=colors[k])
+        if est_err is not None:
+            ax_error_estimates.scatter([global_counter], [est_err], c=colors[k])
     inputs_to_tolerances = [global_counter]
     tolerances = [model_hierarchy.get_tolerance()]
     line_tolerances = ax_error_estimates.plot(inputs_to_tolerances, tolerances, c=colors[-1], label='Tolerance')[0]
@@ -570,10 +571,12 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, show
                 line_variance_estimates.set_data(np.array(inputs_to_outputs), np.array(variance_estimates))
 
             for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names)):
-                ax_error_estimates.scatter([global_counter], [est_err], c=colors[k])
+                if est_err is not None:
+                    ax_error_estimates.scatter([global_counter], [est_err], c=colors[k])
             low, high = ax_error_estimates.get_ylim()
-            ax_error_estimates.set_ylim(min(low, np.min(data['error_estimates']) * 0.9),
-                                        max(high, np.max(data['error_estimates']) * 1.1))
+            arr_err_ests = np.array(data['error_estimates'])
+            ax_error_estimates.set_ylim(min(low, np.min(arr_err_ests[arr_err_ests != np.array(None)]) * 0.9),
+                                        max(high, np.max(arr_err_ests[arr_err_ests != np.array(None)]) * 1.1))
             error_estimates_widget.draw()
 
         inputs_to_tolerances.append(global_counter)

@@ -111,7 +111,7 @@ class NeuralNetworkReductor(BasicObject):
                loss_function=None, restarts=10, lr_scheduler=optim.lr_scheduler.StepLR,
                lr_scheduler_params={'step_size': 10, 'gamma': 0.7},
                es_scheduler_params={'patience': 10, 'delta': 0.}, weight_decay=0.,
-               log_loss_frequency=0, recompute_training_data=False):
+               log_loss_frequency=0, recompute_training_data=False, recompute_validation_data=False):
         """Reduce by training artificial neural networks.
 
         Parameters
@@ -182,9 +182,8 @@ class NeuralNetworkReductor(BasicObject):
         layer_sizes = self._compute_layer_sizes(hidden_layers)
 
         # compute validation data
-        if not hasattr(self, 'validation_data') or recompute_training_data:
+        if not hasattr(self, 'validation_data') or recompute_validation_data:
             with self.logger.block('Computing validation snapshots ...'):
-
                 if self.validation_set:
                     self.validation_data = []
                     if self.fom:
@@ -196,7 +195,7 @@ class NeuralNetworkReductor(BasicObject):
                             sample = self._compute_sample(mu, u)
                             self.validation_data.extend(sample)
                 else:
-                    number_validation_snapshots = int(len(self.training_data)*self.validation_ratio)
+                    number_validation_snapshots = int(len(self.training_data) * self.validation_ratio)
                     # randomly shuffle training data before splitting into two sets
                     get_rng().shuffle(self.training_data)
                     # split training data into validation and training set
@@ -349,7 +348,10 @@ class NeuralNetworkReductor(BasicObject):
 
         product = self.pod_params.get('product')
 
-        return [(mu, self.reduced_basis.inner(u, product=product)[:, 0])]
+        try:
+            return [(mu, self.reduced_basis.inner(u, product=product)[:, 0])]
+        except AssertionError:
+            return [(mu, u)]
 
     def _compute_layer_sizes(self, hidden_layers):
         """Compute the number of neurons in the layers of the neural network."""
@@ -402,7 +404,6 @@ class NeuralNetworkReductor(BasicObject):
             name = 'data_driven'
 
         with self.logger.block('Building ROM ...'):
-            print(self.neural_network)
             rom = NeuralNetworkModel(self.neural_network, parameters,
                                      scaling_parameters=self.scaling_parameters,
                                      output_functional=projected_output_functional,

@@ -51,11 +51,12 @@ class AdaptiveModelHierarchy(Model):
             data['training_times'] = [0, ] * self.num_models
             for i, model in enumerate(self.models):
                 if model is None:
+                    data['error_estimates'].append(None)
                     continue
 
                 if i != self.num_models - 1:
                     tic = time.perf_counter()
-                    est_err = model.estimate_error(mu=mu)
+                    est_err = model.estimate_error(mu=mu)[0]
                     runtime = time.perf_counter() - tic
                     self.runtimes[i] += runtime
                     data['runtimes'][i] = runtime
@@ -74,15 +75,6 @@ class AdaptiveModelHierarchy(Model):
                     self.runtimes[i] += runtime
                     data['solution_time'] = runtime
                     data['runtimes'][i] += runtime
-                    # TODO: Avoid necessity of reconstruction!!!
-                    # If doing so: Make sure to provide information about model that produced
-                    # the result and about the reductor that can be used for reconstruction!!!
-                    # Make sure to adjust handling of training data in NeuralNetworkReductor
-                    # such that it can also deal with reduced coefficients as data!!!
-                    # TODO: How to deal with reduced basis extension?!?!
-                    # Adjustment of training data necessary (zero padding;
-                    # removal of previous training data;
-                    # new machine learning surrogate for additional coefficients; etc.)!!!
                     data['solution'] = sol
                     model_number = i
                     data['model_number'] = model_number

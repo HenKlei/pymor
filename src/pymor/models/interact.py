@@ -518,6 +518,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
 
         def run_optimization():
             from scipy.optimize import minimize as scipy_optimize
+            global initial_guess
             while True:
                 try:
                     optimization_results = scipy_optimize(partial(do_parameter_update, s_out=statistics_out,
@@ -528,7 +529,6 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
                     break
                 except OptimizationInterruptedError:
                     last_mu = collected_optimization_data[-1]['point']
-                    global initial_guess
                     initial_guess = last_mu.to_numpy()
                     global optimization_running
                     optimization_running = False

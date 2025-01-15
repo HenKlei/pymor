@@ -18,9 +18,11 @@ repos:
         exclude: src/pymor/algorithms/rules.py
       - id: destroyed-symlinks
       - id: end-of-file-fixer
+        exclude: ^src/pymordemos/spe10channel/perm_case1.dat$
       - id: file-contents-sorter
         files: ^\.mailmap$
       - id: mixed-line-ending
+        exclude: ^src/pymordemos/spe10channel/perm_case1.dat$
       - id: no-commit-to-branch
         args:
           - -b
@@ -33,6 +35,7 @@ repos:
         args:
           - --autofix
       - id: trailing-whitespace
+        exclude: ^src/pymordemos/spe10channel/perm_case1.dat$
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.9
     hooks:

@@ -276,7 +276,9 @@ def interact(model, parameter_space, show_solution=True, visualizer=None, transf
     return widget
 
 
-def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, show_solution=True, visualizer=None):
+def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, objective_function=None,
+                             show_solution=True, visualizer=None, optimization_method='Nelder-Mead',
+                             optimization_options={}):
     """Interactively explore |Model| in jupyter environment.
 
     This method dynamically creates a set of `ipywidgets` to interactively visualize
@@ -421,62 +423,148 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, show
 
     # Scenarios
     scenarios = []
+    scenarios_titles = []
     ## Monte Carlo
-    button_start_monte_carlo = Button(description='Start', disabled=False)
-    button_stop_monte_carlo = Button(description='Stop', disabled=True)
-    label_current_number_samples = Label('Number of samples: ')
-    label_current_estimated_mean = Label(f'Current estimated mean{"s" if dim_output>1 else ""}: ')
-    label_current_estimated_variance = Label(f'Current estimated variance{"s" if dim_output>1 else ""}: ')
-    current_number_samples = Label('0')
-    current_estimated_mean = Label('-')
-    current_estimated_variance = Label('-')
-    mean_estimates = []
-    variance_estimates = []
-    global monte_carlo_running
-    monte_carlo_running = False
+    if has_output:
+        button_start_monte_carlo = Button(description='Start', disabled=False)
+        button_stop_monte_carlo = Button(description='Stop', disabled=True)
+        label_current_number_samples = Label('Number of samples: ')
+        label_current_estimated_mean = Label(f'Current estimated mean{"s" if dim_output>1 else ""}: ')
+        label_current_estimated_variance = Label(f'Current estimated variance{"s" if dim_output>1 else ""}: ')
+        current_number_samples = Label('0')
+        current_estimated_mean = Label('-')
+        current_estimated_variance = Label('-')
+        mean_estimates = []
+        variance_estimates = []
+        global monte_carlo_running
+        monte_carlo_running = False
 
-    scenarios.append(VBox([HBox([button_start_monte_carlo, button_stop_monte_carlo]),
-                           HBox([label_current_number_samples, current_number_samples]),
-                           HBox([label_current_estimated_mean, current_estimated_mean]),
-                           HBox([label_current_estimated_variance, current_estimated_variance])]))
+        scenarios.append(VBox([HBox([button_start_monte_carlo, button_stop_monte_carlo]),
+                               HBox([label_current_number_samples, current_number_samples]),
+                               HBox([label_current_estimated_mean, current_estimated_mean]),
+                               HBox([label_current_estimated_variance, current_estimated_variance])]))
+        scenarios_titles.append('Monte Carlo estimation')
     ## Parameter optimization
-    scenarios.append(VBox())
+    if objective_function:
+        button_start_optimization = Button(description='Start', disabled=False)
+        button_stop_optimization = Button(description='Stop', disabled=True)
+        global optimization_running
+        optimization_running = False
+
+        scenarios.append(VBox([HBox([button_start_optimization, button_stop_optimization])]))
+        scenarios_titles.append('Parameter optimization')
 
     scenarios_accordion = Accordion(titles=['Application scenarios'],
-                                    children=[Accordion(titles=['Monte Carlo estimation', 'Parameter optimization'],
+                                    children=[Accordion(titles=scenarios_titles,
                                                         children=scenarios, selected_index=0)],
                                     selected_index=0)
 
-    def run_monte_carlo(s_out, m_out):
-        global monte_carlo_running
-        while monte_carlo_running:
-            mu = parameter_space.sample_randomly()
-            do_parameter_update(mu, s_out, m_out)
+    if has_output:
+        def run_monte_carlo(s_out, m_out):
+            global monte_carlo_running
+            while monte_carlo_running:
+                mu = parameter_space.sample_randomly()
+                do_parameter_update(mu, s_out, m_out)
 
-    def do_start_monte_carlo(_):
-        global monte_carlo_running
-        if not monte_carlo_running:
-            monte_carlo_running = True
-        button_start_monte_carlo.disabled = True
-        button_stop_monte_carlo.disabled = False
-        scenarios_accordion.children[0].set_title(0, 'Running: Monte Carlo estimation')
+        def do_start_monte_carlo(_):
+            global monte_carlo_running
+            if not monte_carlo_running:
+                monte_carlo_running = True
+            button_start_monte_carlo.disabled = True
+            button_stop_monte_carlo.disabled = False
+            if objective_function:
+                button_start_optimization.disabled = True
+                button_stop_optimization.disabled = True
+            scenarios_accordion.children[0].set_title(0, 'Running: Monte Carlo estimation')
 
-        from pymor.tools.random import spawn_rng
-        thread_monte_carlo = threading.Thread(target=spawn_rng(run_monte_carlo),
-                                              args=(statistics_out, model_information_out))
-        if not thread_monte_carlo.is_alive():
-            thread_monte_carlo.start()
+            from pymor.tools.random import spawn_rng
+            thread_monte_carlo = threading.Thread(target=spawn_rng(run_monte_carlo),
+                                                  args=(statistics_out, model_information_out))
+            if not thread_monte_carlo.is_alive():
+                thread_monte_carlo.start()
 
-    def do_stop_monte_carlo(_):
-        global monte_carlo_running
-        if monte_carlo_running:
-            monte_carlo_running = False
-        button_start_monte_carlo.disabled = False
-        button_stop_monte_carlo.disabled = True
-        scenarios_accordion.children[0].set_title(0, 'Monte Carlo estimation')
+        def do_stop_monte_carlo(_):
+            global monte_carlo_running
+            if monte_carlo_running:
+                monte_carlo_running = False
+            button_start_monte_carlo.disabled = False
+            button_stop_monte_carlo.disabled = True
+            if objective_function:
+                button_start_optimization.disabled = False
+                button_stop_optimization.disabled = True
+            scenarios_accordion.children[0].set_title(0, 'Monte Carlo estimation')
 
-    button_start_monte_carlo.on_click(do_start_monte_carlo)
-    button_stop_monte_carlo.on_click(do_stop_monte_carlo)
+        button_start_monte_carlo.on_click(do_start_monte_carlo)
+        button_stop_monte_carlo.on_click(do_stop_monte_carlo)
+
+    if objective_function:
+        class OptimizationInterruptedError(Exception):
+            pass
+
+        collected_optimization_data = []
+
+        # TODO: Allow to set initial guess via sliders! Activate start button afterwards!
+        global initial_guess
+        initial_guess = mu.to_numpy()
+
+        global optimization_interrupted
+        optimization_interrupted = False
+
+        parameter_bounds = []
+        for kk in parameter_space.ranges:
+            for jj in range(parameter_space.parameters[kk]):
+                parameter_bounds.append((parameter_space.ranges[kk][0], parameter_space.ranges[kk][1]))
+        parameter_bounds = np.array(tuple(np.array(b) for b in parameter_bounds))
+
+        def run_optimization():
+            from scipy.optimize import minimize as scipy_optimize
+            while True:
+                try:
+                    optimization_results = scipy_optimize(partial(do_parameter_update, s_out=statistics_out,
+                                                                  m_out=model_information_out),
+                                                          x0=initial_guess, method=optimization_method,
+                                                          bounds=parameter_bounds, options=optimization_options)
+                    print(optimization_results)
+                    break
+                except OptimizationInterruptedError:
+                    last_mu = collected_optimization_data[-1]['point']
+                    global initial_guess
+                    initial_guess = last_mu.to_numpy()
+                    global optimization_running
+                    optimization_running = False
+
+        def do_start_optimization(_):
+            global optimization_running
+            if not optimization_running:
+                optimization_running = True
+                global optimization_interrupted
+                optimization_interrupted = False
+            button_start_optimization.disabled = True
+            button_stop_optimization.disabled = False
+            if has_output:
+                button_start_monte_carlo.disabled = True
+                button_stop_monte_carlo.disabled = True
+            scenarios_accordion.children[0].set_title(1, 'Running: Parameter optimization')
+
+            from pymor.tools.random import spawn_rng
+            thread_optimization = threading.Thread(target=spawn_rng(run_optimization))
+            if not thread_optimization.is_alive():
+                thread_optimization.start()
+
+        def do_stop_optimization(_):
+            global optimization_running
+            if optimization_running:
+                global optimization_interrupted
+                optimization_interrupted = True
+            button_start_optimization.disabled = False
+            button_stop_optimization.disabled = True
+            if has_output:
+                button_start_monte_carlo.disabled = False
+                button_stop_monte_carlo.disabled = True
+            scenarios_accordion.children[0].set_title(1, 'Parameter optimization')
+
+        button_start_optimization.on_click(do_start_optimization)
+        button_stop_optimization.on_click(do_stop_optimization)
 
     left_pane.append(scenarios_accordion)
 
@@ -557,6 +645,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, show
             low, high = ax_output.get_ylim()
             ax_output.set_ylim(min(low, np.min(output)), max(high, np.max(output)))
             output_widget.draw()
+
             global monte_carlo_running
             if monte_carlo_running:
                 inputs_to_outputs.append(global_counter)
@@ -570,14 +659,14 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, show
                 line_mean_estimates.set_data(np.array(inputs_to_outputs), np.array(mean_estimates))
                 line_variance_estimates.set_data(np.array(inputs_to_outputs), np.array(variance_estimates))
 
-            for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names)):
-                if est_err is not None:
-                    ax_error_estimates.scatter([global_counter], [est_err], c=colors[k])
-            low, high = ax_error_estimates.get_ylim()
-            arr_err_ests = np.array(data['error_estimates'])
-            ax_error_estimates.set_ylim(min(low, np.min(arr_err_ests[arr_err_ests != np.array(None)]) * 0.9),
-                                        max(high, np.max(arr_err_ests[arr_err_ests != np.array(None)]) * 1.1))
-            error_estimates_widget.draw()
+        for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names)):
+            if est_err is not None:
+                ax_error_estimates.scatter([global_counter], [est_err], c=colors[k])
+        low, high = ax_error_estimates.get_ylim()
+        arr_err_ests = np.array(data['error_estimates'])
+        ax_error_estimates.set_ylim(min(low, np.min(arr_err_ests[arr_err_ests != np.array(None)]) * 0.9),
+                                    max(high, np.max(arr_err_ests[arr_err_ests != np.array(None)]) * 1.1))
+        error_estimates_widget.draw()
 
         inputs_to_tolerances.append(global_counter)
         tolerances.append(model_hierarchy.get_tolerance())
@@ -598,6 +687,18 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, show
 
         do_update_statistics(s_out)
         do_update_model_information(m_out)
+
+        if objective_function:
+            global optimization_running
+            if optimization_running:
+                global optimization_interrupted
+                if optimization_interrupted:
+                    raise OptimizationInterruptedError
+                else:
+                    # TODO: Update plots of optimization trajectory
+                    # in parameter space and objective function values!
+                    quantity_of_interest = objective_function(model_hierarchy, mu)
+                    return quantity_of_interest
 
     parameter_selector.on_change(partial(do_parameter_update, s_out=statistics_out, m_out=model_information_out))
 

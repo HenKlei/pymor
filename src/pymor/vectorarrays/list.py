@@ -31,6 +31,8 @@ class Vector(BasicObject):
     def inner(self, other):
         raise NotImplementedError
 
+    dot = inner
+
     @abstractmethod
     def norm(self):
         pass
@@ -426,6 +428,10 @@ class ListVectorArrayImpl(VectorArrayImpl):
 
     def inner(self, other, ind, oind):
         return (np.array([[a.inner(b) for b in other._indexed(oind)] for a in self._indexed(ind)])
+                  .reshape((self.len_ind(ind), other.len_ind(oind))))
+
+    def dot(self, other, ind, oind):
+        return (np.array([[a.dot(b) for b in other._indexed(oind)] for a in self._indexed(ind)])
                   .reshape((self.len_ind(ind), other.len_ind(oind))))
 
     def pairwise_inner(self, other, ind, oind):

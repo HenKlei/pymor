@@ -817,7 +817,10 @@ class VectorArrayOperator(Operator):
         if not self.adjoint:
             return self.array.lincomb(U.to_numpy())
         else:
-            return self.range.make_array(self.array.inner(U).T)
+            try:
+                return self.range.make_array(self.array.inner(U).T)
+            except:
+                return self.range.make_array(self.array.dot(U).T)
 
     def apply_inverse(self, V, mu=None, initial_guess=None, least_squares=False):
         if not least_squares and len(self.array) != self.array.dim:

@@ -31,17 +31,8 @@ repos:
           - pymor-paper
           - -p
           - \d+\.\d+\.x
-      - id: pretty-format-json
-        args:
-          - --autofix
       - id: trailing-whitespace
         exclude: ^src/pymordemos/spe10channel/perm_case1.dat$
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
-    hooks:
-      - id: ruff
-        args:
-          - --fix
   - repo: https://github.com/DavidAnson/markdownlint-cli2
     rev: v0.14.0
     hooks:

@@ -435,6 +435,13 @@ class VectorArray(BasicObject):
             assert self.space == other.space
             return self.impl.inner(other.impl, self.ind, other.ind)
 
+    def dot(self, other, product=None):
+        if product is not None:
+            return product.apply2(self, other)
+        else:
+            assert self.space == other.space
+            return self.impl.dot(other.impl, self.ind, other.ind)
+
     def pairwise_inner(self, other, product=None):
         """Returns the pairwise inner products between |VectorArray| elements.
 

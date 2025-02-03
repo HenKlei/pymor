@@ -19,27 +19,87 @@ from dune.xt.grid import (
     make_cube_grid,
 )
 
+from pymor.algorithms.to_matrix import to_matrix
 from pymor.analyticalproblems.domaindescriptions import RectDomain
 from pymor.analyticalproblems.elliptic import StationaryProblem
 from pymor.analyticalproblems.functions import BitmapFunction, ConstantFunction, ExpressionFunction, GenericFunction
 from pymor.analyticalproblems.instationary import InstationaryProblem
+from pymor.bindings.dunegdt import DuneXTMatrixOperator
+from pymor.core.base import ImmutableObject
 from pymor.discretizers.builtin.cg import discretize_instationary_cg as discretize_instationary_cg_pymor
 from pymor.discretizers.builtin.grids.boundaryinfos import GenericBoundaryInfo
 from pymor.discretizers.builtin.grids.rect import RectGrid
 from pymor.discretizers.dunegdt.cg import _discretize_instationary_cg_dune as discretize_instationary_cg_dune
 from pymor.discretizers.dunegdt.functions import DuneFunction, DuneGridFunction, LincombDuneGridFunction
 from pymor.discretizers.dunegdt.problems import InstationaryDuneProblem, StationaryDuneProblem
+from pymor.models.basic import InstationaryModel
+from pymor.operators.constructions import LincombOperator, VectorArrayOperator
+from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.parameters.base import Parameters, ParameterSpace
 from pymor.parameters.functionals import (
     ConstantParameterFunctional,
     GenericParameterFunctional,
     MinThetaParameterFunctional,
+    ParameterFunctional,
     ProjectionParameterFunctional,
 )
 from pymor.tools.floatcmp import float_cmp
 
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))  # tools.py
-from tools import simplify, to_numpy
+#from tools import simplify, to_numpy
+
+def simplify(op):
+    assert isinstance(op, LincombOperator)
+    parametric_ops = []
+    parametric_coeffs = []
+    nonparametric_ops = []
+    nonparametric_coeffs = []
+    for oo, cc in zip(op.operators, op.coefficients):
+        if isinstance(cc, ParameterFunctional):
+            parametric_ops.append(oo)
+            parametric_coeffs.append(cc)
+        else:
+            nonparametric_ops.append(oo)
+            nonparametric_coeffs.append(cc)
+    if len(nonparametric_ops) == 0:
+        return op
+    else:
+        return op.with_(
+            operators=parametric_ops + [LincombOperator(nonparametric_ops, nonparametric_coeffs).assemble()],
+            coefficients=parametric_coeffs + [1,])
+
+class ConvertedVisualizer(ImmutableObject):
+
+    def __init__(self, visualizer, vector_space):
+        self.__auto_init(locals())
+
+    def visualize(self, U, *args, **kwargs):
+        V = self.vector_space.zeros(len(U))
+        for ii in range(len(U)):
+            v = np.array(V.impl._list[ii].impl, copy=False)
+            v[:] = U[ii].to_numpy()[:]
+        self.visualizer.visualize(V, *args, **kwargs)
+
+def to_numpy(obj):
+    if isinstance(obj, (DuneXTMatrixOperator, VectorArrayOperator)):
+        return NumpyMatrixOperator(to_matrix(obj))
+    elif isinstance(obj, LincombOperator):
+        return obj.with_(
+            operators=[to_numpy(op) for op in obj.operators],
+            solver_options=None,
+        )
+    elif isinstance(obj, InstationaryModel):
+        return obj.with_(
+            operator=to_numpy(obj.operator),
+            rhs=to_numpy(obj.rhs),
+            mass=to_numpy(obj.mass),
+            products={kk: to_numpy(vv) for kk, vv in obj.products.items()},
+            initial_data=to_numpy(obj.initial_data),
+            output_functional=to_numpy(obj.output_functional),
+            visualizer=ConvertedVisualizer(obj.visualizer, obj.solution_space)
+        )
+
+    assert False, 'We should not get here!'
 
 
 def dune_function_to_pymor(func, grid, num_grid_elements, bounding_box):
@@ -65,7 +125,7 @@ def dune_function_to_pymor(func, grid, num_grid_elements, bounding_box):
     im = Image.fromarray(dofs)
     im.save(filename)
     # create pyMOR function
-    return BitmapFunction(filename, bounding_box=bounding_box, range=min_max)
+    return BitmapFunction.from_file(filename, bounding_box=bounding_box, range=min_max)
 
 
 # -
@@ -121,22 +181,22 @@ def make_problem(regime='diffusion dominated', num_global_refines=0, spe10_perm_
     channel = {
         'dune': GF(grid['dune'], GF(grid['dune'], IndicatorFunction([([[0, 5], [HW, 1]], [1.]),]))),
         'pymor': ExpressionFunction(
-            f'(0 <= x[..., 0])*1.*(x[..., 0] <= 5)*({HW} <= x[..., 1])*(x[..., 1] <= 1)',
+            f'(0 <= x[0])*1.*(x[0] <= 5)*({HW} <= x[1])*(x[1] <= 1)',
             dim_domain=2)}
     washcoat = {
         'dune': GF(grid['dune'], IndicatorFunction([([[0, 5], [0, HW]], [1.]),])),
         'pymor': ExpressionFunction(
-            f'(0 <= x[..., 0])*1.*(x[..., 0] <= 5)*(0 <= x[..., 1])*(x[..., 1] <= {HW})',
+            f'(0 <= x[0])*1.*(x[0] <= 5)*(0 <= x[1])*(x[1] <= {HW})',
             dim_domain=2)}
     inflow = {
         'dune': GF(grid['dune'], GF(grid['dune'], IndicatorFunction([([[0-BL, 0+BL], [HW, 1]], [1.]),]))),
         'pymor': ExpressionFunction(
-            f'(0-{BL} <= x[..., 0])*1.*(x[..., 0] <= 0+{BL})*({HW} <= x[..., 1])*(x[..., 1] <= 1)',
+            f'(0-{BL} <= x[0])*1.*(x[0] <= 0+{BL})*({HW} <= x[1])*(x[1] <= 1)',
             dim_domain=2)}
     outflow = {
         'dune': GF(grid['dune'], GF(grid['dune'], IndicatorFunction([([[5-BL, 5+BL], [HW, 1]], [1.]),]))),
         'pymor': ExpressionFunction(
-            f'(5-{BL} <= x[..., 0])*1.*(x[..., 0] <= 5+{BL})*({HW} <= x[..., 1])*(x[..., 1] <= 1)',
+            f'(5-{BL} <= x[0])*1.*(x[0] <= 5+{BL})*({HW} <= x[1])*(x[1] <= 1)',
             dim_domain=2)}
 
     boundary_info = {

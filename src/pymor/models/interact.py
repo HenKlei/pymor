@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.colors import TABLEAU_COLORS as COLORS
 
+#from matplotlib.colors import CSS4_COLORS as COLORS
 from pymor.core.config import config
 
 config.require('IPYWIDGETS')
@@ -370,9 +371,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
 
     # Output
     if has_output:
-        output = data['output']
-        dim_output = model_hierarchy.dim_output
-        assert len(output) == 1
+        output = data['output'].ravel()
         fig_output, ax_output = plt.subplots(1, 1)
         fig_output.canvas.header_visible = False
         #fig_output.canvas.layout.width = '50%'
@@ -380,14 +379,18 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
         fig_output.set_figwidth(320 / 100)
         fig_output.set_figheight(200 / 100)
         for k, name in enumerate(model_names):
-            for i in range(dim_output):
-                ax_output.scatter([], [], c=colors[k], marker=marker_styles[i % len(marker_styles)],
-                                  label=f'{name}{": "+str(i) if dim_output>1 else ""}')
-        for i, o in enumerate(output[0]):
+            ax_output.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
+        for i, o in enumerate(output):
             ax_output.scatter([global_counter], [o], c=colors[mod_num],
                               marker=marker_styles[i % len(marker_styles)])
-        line_mean_estimates = ax_output.plot([0], [0], c=colors[-1], label='Estimated mean')[0]
-        line_variance_estimates = ax_output.plot([0], [0], c=colors[-2], label='Estimated variance')[0]
+        lines_mean_estimates = []
+        lines_variance_estimates = []
+
+        ax_output.plot([0], [0], c=colors[-1], label='Estimated mean')
+        ax_output.plot([0], [0], c=colors[-2], label='Estimated variance')
+        for i in range(len(output)):
+            lines_mean_estimates.append(ax_output.plot([0], [0], c=colors[-1], marker=marker_styles[i % len(marker_styles)])[0])
+            lines_variance_estimates.append(ax_output.plot([0], [0], c=colors[-2], marker=marker_styles[i % len(marker_styles)])[0])
         fig_output.legend()
         output_widget = fig_output.canvas
         right_pane.append(Accordion(titles=['Outputs'], children=[output_widget], selected_index=0))
@@ -429,8 +432,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
         button_start_monte_carlo = Button(description='Start', disabled=False)
         button_stop_monte_carlo = Button(description='Stop', disabled=True)
         label_current_number_samples = Label('Number of samples: ')
-        label_current_estimated_mean = Label(f'Current estimated mean{"s" if dim_output>1 else ""}: ')
-        label_current_estimated_variance = Label(f'Current estimated variance{"s" if dim_output>1 else ""}: ')
+        label_current_estimated_mean = Label(f'Current estimated mean{"s" if len(output)>1 else ""}: ')
+        label_current_estimated_variance = Label(f'Current estimated variance{"s" if len(output)>1 else ""}: ')
         current_number_samples = Label('0')
         current_estimated_mean = Label('-')
         current_estimated_variance = Label('-')
@@ -448,10 +451,43 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
     if objective_function:
         button_start_optimization = Button(description='Start', disabled=False)
         button_stop_optimization = Button(description='Stop', disabled=True)
+        label_current_objective_function_value = Label('Objective function value: ')
+        current_objective_function_value = Label('')
+        label_current_optimization_parameter = Label('Current parameter: ')
+        current_optimization_parameter = Label('')
         global optimization_running
         optimization_running = False
 
-        scenarios.append(VBox([HBox([button_start_optimization, button_stop_optimization])]))
+        fig_objective_functional_value, ax_objective_functional_value = plt.subplots(1, 1)
+        fig_objective_functional_value.suptitle('Objective function value')
+        fig_objective_functional_value.canvas.header_visible = False
+        #fig_objective_functional_value.canvas.layout.width = '50%'
+        fig_objective_functional_value.canvas.layout.flex = '1 0 320px'
+        fig_objective_functional_value.set_figwidth(320 / 100)
+        fig_objective_functional_value.set_figheight(200 / 100)
+        for k, name in enumerate(model_names):
+            ax_objective_functional_value.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
+        fig_objective_functional_value.legend()
+        ax_objective_functional_value.set_yscale('log')
+        ax_objective_functional_value.set_xlabel('Optimization step')
+        objective_function_value_widget = fig_objective_functional_value.canvas
+        if model_hierarchy.parameters.dim == 2:
+            fig_current_optimization_parameter, ax_current_optimization_parameter = plt.subplots(1, 1)
+            fig_current_optimization_parameter.suptitle('Trajectory in parameter space')
+            fig_current_optimization_parameter.canvas.header_visible = False
+            #fig_current_optimization_parameter.canvas.layout.width = '50%'
+            fig_current_optimization_parameter.canvas.layout.flex = '1 0 320px'
+            fig_current_optimization_parameter.set_figwidth(320 / 100)
+            fig_current_optimization_parameter.set_figheight(200 / 100)
+            for k, name in enumerate(model_names):
+                ax_current_optimization_parameter.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
+            fig_current_optimization_parameter.legend()
+            current_optimization_parameter_widget = fig_current_optimization_parameter.canvas
+
+        scenarios.append(VBox([HBox([button_start_optimization, button_stop_optimization]),
+                               HBox([label_current_objective_function_value, current_objective_function_value]),
+                               HBox([label_current_optimization_parameter, current_optimization_parameter]),
+                               objective_function_value_widget]))
         scenarios_titles.append('Parameter optimization')
 
     scenarios_accordion = Accordion(titles=['Application scenarios'],
@@ -526,6 +562,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
                                                           x0=initial_guess, method=optimization_method,
                                                           bounds=parameter_bounds, options=optimization_options)
                     print(optimization_results)
+                    # TODO: Stop automatically here! Adjust buttons and global variables accordingly!
                     break
                 except OptimizationInterruptedError:
                     last_mu = collected_optimization_data[-1]['point']
@@ -624,6 +661,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
         global global_counter
         global_counter = global_counter + 1
 
+        mu = model_hierarchy.parameters.parse(mu)
         if 'input' in mu:
             input = mu.get_time_dependent_value('input') if mu.is_time_dependent('input') else mu['input']
         else:
@@ -636,10 +674,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
             U = data['solution']
             visualizer.set(model_hierarchy.reconstruct(U, mod_num))
         if has_output:
-            output = data['output']
-            assert len(output) == 1
-            outputs.append(output[0])
-            for i, o in enumerate(output[0]):
+            output = data['output'].ravel()
+            outputs.append(output)
+            for i, o in enumerate(output):
                 ax_output.scatter([global_counter], [o], c=colors[mod_num],
                                   marker=marker_styles[i % len(marker_styles)])
             low, high = ax_output.get_ylim()
@@ -656,8 +693,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
                 variance_estimate = np.var(np.array(outputs), axis=0)
                 variance_estimates.append(variance_estimate)
                 current_estimated_variance.value = str(np.var(np.array(outputs), axis=0))
-                line_mean_estimates.set_data(np.array(inputs_to_outputs), np.array(mean_estimates))
-                line_variance_estimates.set_data(np.array(inputs_to_outputs), np.array(variance_estimates))
+                for i, (est_mean, est_var) in enumerate(zip(np.array(mean_estimates).T, np.array(variance_estimates).T)):
+                    lines_mean_estimates[i].set_data(np.array(inputs_to_outputs), est_mean)
+                    lines_variance_estimates[i].set_data(np.array(inputs_to_outputs), est_var)
 
         for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names)):
             if est_err is not None:
@@ -698,9 +736,26 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
                     # TODO: Update plots of optimization trajectory
                     # in parameter space and objective function values!
                     quantity_of_interest = objective_function(model_hierarchy, mu)
+                    current_objective_function_value.value = str(quantity_of_interest)
+                    current_optimization_parameter.value = str(mu.to_numpy())
+
+                    # TODO: Get model used for computation or tolerance values...
+                    # TODO: Get optimization iteration and not global_counter
+                    ax_objective_functional_value.scatter([global_counter], [quantity_of_interest], c=colors[0], marker=marker_styles[0])
+                    low, high = ax_objective_functional_value.get_ylim()
+                    ax_objective_functional_value.set_ylim(min(low, quantity_of_interest) * 0.9,
+                                                           max(high, quantity_of_interest) * 1.1)
+                    objective_function_value_widget.draw()
+
+                    collected_optimization_data.append({'point': mu, 'val': quantity_of_interest})
                     return quantity_of_interest
 
-    parameter_selector.on_change(partial(do_parameter_update, s_out=statistics_out, m_out=model_information_out))
+    def do_manual_parameter_update(mu, s_out, m_out):
+        global initial_guess
+        initial_guess = mu.to_numpy()
+        return do_parameter_update(mu, s_out, m_out)
+
+    parameter_selector.on_change(partial(do_manual_parameter_update, s_out=statistics_out, m_out=model_information_out))
 
     return widget
 

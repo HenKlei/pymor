@@ -260,7 +260,8 @@ class InstationaryModel(Model):
     """
 
     def __init__(self, T, initial_data, operator, rhs, mass=None, time_stepper=None, num_values=None,
-                 output_functional=None, products=None, error_estimator=None, visualizer=None, name=None):
+                 output_functional=None, products=None, error_estimator=None, visualizer=None, name=None,
+                 assemble_temporal_norms=True):
 
         if isinstance(rhs, VectorArray):
             assert rhs in operator.range
@@ -297,6 +298,58 @@ class InstationaryModel(Model):
         self.solution_space = operator.source
         self.linear = operator.linear and (output_functional is None or output_functional.linear)
         self.dim_output = output_functional.range.dim
+
+        if output_functional is not None:
+            self.output_space = output_functional.range
+
+        if assemble_temporal_norms:
+            # assemble temporal L^2 matrix, TODO: determine temporal polynomial order from time_stepper
+            import numpy as np
+
+            from pymor.discretizers.builtin.cg import L2ProductP1
+            from pymor.discretizers.builtin.grids.boundaryinfos import EmptyBoundaryInfo
+            from pymor.discretizers.builtin.grids.oned import OnedGrid
+
+            temporal_grid = OnedGrid(
+                    domain=(0., T),
+                    num_intervals=time_stepper.nt)
+            temporal_l2_product = L2ProductP1(temporal_grid, EmptyBoundaryInfo(temporal_grid))
+            self.temporal_l2_product = temporal_l2_product.assemble()
+
+            # define base Bochner norms
+            def bochner_sup_norm(spatial_norm, U, mu=None):
+                assert len(U) == self.temporal_l2_product.matrix.shape[0], \
+                    f'Given VectorArray (len={len(U)}) does not match TimeStepper ({self.temporal_l2_product.matrix.shape[0]} values)!'
+                spatial_norms = spatial_norm(U, mu=mu)
+                return np.linalg.norm(spatial_norms, ord=np.inf)
+
+            def bochner_l2_norm(spatial_norm, U, mu=None):
+                assert len(U) == self.temporal_l2_product.matrix.shape[0], \
+                    f'Given VectorArray (len={len(U)}) does not match TimeStepper ({self.temporal_l2_product.matrix.shape[0]} values)!'
+                spatial_norms = spatial_norm(U, mu=mu).reshape(-1, 1)
+                return np.sqrt(spatial_norms.T @ (self.temporal_l2_product.matrix @ spatial_norms))[0][0]
+
+            # build full Bochner norms
+            for kk in self.products.keys():
+                setattr(self, f'bochner_sup_{kk}_norm',
+                        lambda U, mu=None: bochner_sup_norm(getattr(self, f'{kk}_norm'), U, mu))
+                setattr(self, f'bochner_l2_{kk}_norm',
+                        lambda U, mu=None: bochner_l2_norm(getattr(self, f'{kk}_norm'), U, mu))
+
+            # build output norms, if applicable
+            if output_functional is not None and self.output_space.dim == 1:
+
+                def output_sup_norm(output):
+                    #assert output in self.output_space
+                    return np.linalg.norm(output._array, ord=np.inf)
+
+                def output_l2_norm(output):
+                    #assert output in self.output_space
+                    output = output.reshape(-1, 1)
+                    return np.sqrt(output.T @ (self.temporal_l2_product.matrix @ output))[0][0]
+
+                self.output_sup_norm = output_sup_norm
+                self.output_l2_norm = output_l2_norm
 
     def __str__(self):
         return (

@@ -45,10 +45,12 @@ class AdaptiveModelHierarchy(Model):
         return self._tolerance
 
     def _compute(self, quantities, data, mu):
+        model_number = -1
+        data['error_estimates'] = []
+        data['runtimes'] = [0, ] * self.num_models
+        data['training_times'] = [0, ] * self.num_models
+
         if 'solution' in quantities:
-            data['error_estimates'] = []
-            data['runtimes'] = [0, ] * self.num_models
-            data['training_times'] = [0, ] * self.num_models
             for i, model in enumerate(self.models):
                 if model is None:
                     data['error_estimates'].append(None)
@@ -89,25 +91,53 @@ class AdaptiveModelHierarchy(Model):
                         quantities.remove('solution_error_estimate')
                     break
 
-            # Perform training of reduced models
-            for j, (freq, model, red_meth) in enumerate(zip(self.training_frequencies, self.models,
-                                                            self.reduction_methods)):
-                if j < model_number and len(self.training_data[j]) > 0 and len(self.training_data[j]) % freq == 0:
-                    tic = time.perf_counter()
-                    self.models[j] = red_meth(self.training_data[j], self.len_previous_training_data[j],
-                                              self.models[j:], self.reductors[j:])
-                    self.models[:j] = self.post_reduction_methods[j](self.training_data[:j+1], self.models[:j+1],
-                                                                     self.reductors[:j+1])
-                    training_time = time.perf_counter() - tic
-                    self.training_times[j] += training_time
-                    data['training_times'][j] += training_time
-
         if 'output' in quantities:
+            if model_number == -1:
+                for i, model in enumerate(self.models):
+                    if model is None:
+                        data['error_estimates'].append(None)
+                        continue
+
+                    if i != self.num_models - 1:
+                        tic = time.perf_counter()
+                        est_err = model.estimate_output_error(mu=mu)#[0]
+                        runtime = time.perf_counter() - tic
+                        self.runtimes[i] += runtime
+                        data['runtimes'][i] = runtime
+                        self.num_error_estimates[i] += 1
+                        data['error_estimates'].append(est_err)
+                    else:
+                        est_err = -1
+                        data['runtimes'][i] = 0.
+
+                    if est_err <= self.get_tolerance():
+                        self.num_successful_calls[i] += 1
+                        model_number = i
+                        data['model_number'] = model_number
+                        break
+
             tic = time.perf_counter()
-            data['output'] = self.models[model_number].compute(data={'solution': sol}, output=True, mu=mu)['output']
+            sol_data = self.models[model_number].compute(solution=True, output=True, mu=mu)
             runtime = time.perf_counter() - tic
+            data['output'] = sol_data['output']
+            if model_number > 0:
+                self.len_previous_training_data[model_number-1] = len(self.training_data[model_number-1])
+                self.training_data[model_number-1].append((mu, sol_data['solution']))
             self.runtimes[model_number] += runtime
             data['runtimes'][model_number] += runtime
             quantities.remove('output')
+
+        # Perform training of reduced models
+        for j, (freq, model, red_meth) in enumerate(zip(self.training_frequencies, self.models,
+                                                        self.reduction_methods)):
+            if j < model_number and len(self.training_data[j]) > 0 and len(self.training_data[j]) % freq == 0:
+                tic = time.perf_counter()
+                self.models[j] = red_meth(self.training_data[j], self.len_previous_training_data[j],
+                                          self.models[j:], self.reductors[j:])
+                self.models[:j] = self.post_reduction_methods[j](self.training_data[:j+1], self.models[:j+1],
+                                                                 self.reductors[:j+1])
+                training_time = time.perf_counter() - tic
+                self.training_times[j] += training_time
+                data['training_times'][j] += training_time
 
         super()._compute(quantities, data, mu=mu)

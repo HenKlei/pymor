@@ -278,6 +278,7 @@ def interact(model, parameter_space, show_solution=True, visualizer=None, transf
 
 
 def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, objective_function=None,
+                             optimal_parameter=None, optimization_bg_image=None, optimization_bg_image_limits=None,
                              show_solution=True, visualizer=None, optimization_method='Nelder-Mead',
                              optimization_options={}):
     """Interactively explore |Model| in jupyter environment.
@@ -389,8 +390,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
         ax_output.plot([0], [0], c=colors[-1], label='Estimated mean')
         ax_output.plot([0], [0], c=colors[-2], label='Estimated variance')
         for i in range(len(output)):
-            lines_mean_estimates.append(ax_output.plot([0], [0], c=colors[-1], marker=marker_styles[i % len(marker_styles)])[0])
-            lines_variance_estimates.append(ax_output.plot([0], [0], c=colors[-2], marker=marker_styles[i % len(marker_styles)])[0])
+            lines_mean_estimates.append(ax_output.plot([0], [0], c=colors[-1],
+                                                       marker=marker_styles[i % len(marker_styles)])[0])
+            lines_variance_estimates.append(ax_output.plot([0], [0], c=colors[-2],
+                                                           marker=marker_styles[i % len(marker_styles)])[0])
         fig_output.legend()
         output_widget = fig_output.canvas
         right_pane.append(Accordion(titles=['Outputs'], children=[output_widget], selected_index=0))
@@ -479,15 +482,39 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
             fig_current_optimization_parameter.canvas.layout.flex = '1 0 320px'
             fig_current_optimization_parameter.set_figwidth(320 / 100)
             fig_current_optimization_parameter.set_figheight(200 / 100)
+
+            parameter_bounds = []
+            for kk in parameter_space.ranges:
+                for jj in range(parameter_space.parameters[kk]):
+                    parameter_bounds.append((parameter_space.ranges[kk][0], parameter_space.ranges[kk][1]))
+            assert len(parameter_bounds) == 2
+
+            if optimization_bg_image:
+                bg_img = plt.imread(optimization_bg_image)
+                ax_current_optimization_parameter.imshow(bg_img, extent=[parameter_bounds[0][0], parameter_bounds[0][1],
+                                                                         parameter_bounds[1][0], parameter_bounds[1][1]])
+                if optimization_bg_image_limits is not None:
+                    colormap = plt.cm.get_cmap('viridis')
+                    sm = plt.cm.ScalarMappable(cmap=colormap)
+                    sm.set_clim(vmin=optimization_bg_image_limits[0], vmax=optimization_bg_image_limits[1])
+                    fig_current_optimization_parameter.colorbar(sm, ax=ax_current_optimization_parameter)
+
             for k, name in enumerate(model_names):
                 ax_current_optimization_parameter.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
+            if optimal_parameter:
+                ax_current_optimization_parameter.scatter([optimal_parameter.to_numpy()[0]],
+                                                          [optimal_parameter.to_numpy()[1]],
+                                                          c="red", marker="x", label="Optimum")
             fig_current_optimization_parameter.legend()
+            ax_current_optimization_parameter.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
+            ax_current_optimization_parameter.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
             current_optimization_parameter_widget = fig_current_optimization_parameter.canvas
 
         scenarios.append(VBox([HBox([button_start_optimization, button_stop_optimization]),
                                HBox([label_current_objective_function_value, current_objective_function_value]),
                                HBox([label_current_optimization_parameter, current_optimization_parameter]),
-                               objective_function_value_widget]))
+                               objective_function_value_widget,
+                               current_optimization_parameter_widget]))
         scenarios_titles.append('Parameter optimization')
 
     scenarios_accordion = Accordion(titles=['Application scenarios'],
@@ -561,8 +588,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
                                                                   m_out=model_information_out),
                                                           x0=initial_guess, method=optimization_method,
                                                           bounds=parameter_bounds, options=optimization_options)
-                    print(optimization_results)
-                    # TODO: Stop automatically here! Adjust buttons and global variables accordingly!
+                    print(f"Optimization result: {optimization_results}")
+                    do_stop_optimization(None)
                     break
                 except OptimizationInterruptedError:
                     last_mu = collected_optimization_data[-1]['point']
@@ -739,8 +766,12 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, obje
                     current_objective_function_value.value = str(quantity_of_interest)
                     current_optimization_parameter.value = str(mu.to_numpy())
 
-                    # TODO: Get model used for computation or tolerance values...
-                    # TODO: Get optimization iteration and not global_counter
+                    if model_hierarchy.parameters.dim == 2:
+                        ax_current_optimization_parameter.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]], c=colors[mod_num])
+                        current_optimization_parameter_widget.draw()
+
+                    # TODO: Get model used for computation or tolerance values... and use corresponding color to distinguish them!
+                    # TODO: Get optimization iteration and not global_counter!
                     ax_objective_functional_value.scatter([global_counter], [quantity_of_interest], c=colors[0], marker=marker_styles[0])
                     low, high = ax_objective_functional_value.get_ylim()
                     ax_objective_functional_value.set_ylim(min(low, quantity_of_interest) * 0.9,

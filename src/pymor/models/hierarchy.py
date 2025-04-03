@@ -58,7 +58,9 @@ class AdaptiveModelHierarchy(Model):
 
                 if i != self.num_models - 1:
                     tic = time.perf_counter()
-                    est_err = model.estimate_error(mu=mu)[0]
+                    est_err = model.estimate_error(mu=mu)
+                    if hasattr(est_err, '__len__') and len(est_err) > 0:
+                        est_err = est_err[0]
                     runtime = time.perf_counter() - tic
                     self.runtimes[i] += runtime
                     data['runtimes'][i] = runtime

@@ -68,19 +68,41 @@ def simplify(op):
             operators=parametric_ops + [LincombOperator(nonparametric_ops, nonparametric_coeffs).assemble()],
             coefficients=parametric_coeffs + [1,])
 
-class ConvertedVisualizer(ImmutableObject):
+class ConvertedVisualizer():#ImmutableObject):
 
-    def __init__(self, visualizer, vector_space):
-        self.__auto_init(locals())
+    def __init__(self, visualizer, vector_space, num_grid_elements):
+        self.visualizer = visualizer
+        self.vector_space = vector_space
+        self.num_grid_elements = num_grid_elements
+        #self.__auto_init(locals())
 
     def visualize(self, U, *args, **kwargs):
-        V = self.vector_space.zeros(len(U))
-        for ii in range(len(U)):
-            v = np.array(V.impl._list[ii].impl, copy=False)
-            v[:] = U[ii].to_numpy()[:]
-        self.visualizer.visualize(V, *args, **kwargs)
+        assert len(U) == 1
+        v = U[0].to_numpy()
+        v = v.reshape(self.num_grid_elements[1]+1, self.num_grid_elements[0]+1)
+        v = np.array(np.flip(v, 0))
 
-def to_numpy(obj):
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(1, 1)
+        fig.canvas.header_visible = False
+        #fig_objective_functional_value.canvas.layout.width = '50%'
+        fig.canvas.layout.flex = '1 0 320px'
+        fig.set_figwidth(320 / 100)
+        fig.set_figheight(200 / 100)
+        im = ax.imshow(v.reshape(self.num_grid_elements[1]+1, self.num_grid_elements[0]+1))
+        self.im = im
+        widget = fig.canvas
+        return widget
+        #self.visualizer.visualize(V, *args, **kwargs)
+
+    def set(self, U):
+        assert len(U) == 1
+        v = U[0].to_numpy()
+        v = v.reshape(self.num_grid_elements[1]+1, self.num_grid_elements[0]+1)
+        v = np.array(np.flip(v, 0))
+        self.im.set_data(v)
+
+def to_numpy(obj, **kwargs):
     if isinstance(obj, (DuneXTMatrixOperator, VectorArrayOperator)):
         return NumpyMatrixOperator(to_matrix(obj))
     elif isinstance(obj, LincombOperator):
@@ -96,7 +118,7 @@ def to_numpy(obj):
             products={kk: to_numpy(vv) for kk, vv in obj.products.items()},
             initial_data=to_numpy(obj.initial_data),
             output_functional=to_numpy(obj.output_functional),
-            visualizer=ConvertedVisualizer(obj.visualizer, obj.solution_space)
+            visualizer=ConvertedVisualizer(obj.visualizer, obj.solution_space, kwargs['num_grid_elements'])
         )
 
     assert False, 'We should not get here!'
@@ -251,10 +273,10 @@ def make_problem(regime='diffusion dominated', num_global_refines=0, spe10_perm_
     parameter_space = parameter_ranges[regime]
     mu_bar = parameter_space.parameters.parse({kk: vv for kk, (vv, _) in parameter_space.ranges.items()})
 
-    return grid, boundary_info, problem, parameter_space, mu_bar
+    return grid, num_grid_elements, boundary_info, problem, parameter_space, mu_bar
 
 
-def discretize(grid, boundary_info, problem, mu_bar, nt=127):
+def discretize(grid, num_grid_elements, boundary_info, problem, mu_bar, nt=127):
     """Yields fom, fom_data, coercivity_estimate."""
     theta_diffusion = ConstantParameterFunctional(1)
     theta_reaction = MinThetaParameterFunctional((ProjectionParameterFunctional('Da'),), mu_bar)
@@ -264,7 +286,7 @@ def discretize(grid, boundary_info, problem, mu_bar, nt=127):
 
     fom, fom_data = discretize_instationary_cg_dune(
         problem['dune'], nt=nt, mu_energy_product=mu_bar, order=1)
-    fom = to_numpy(fom)
+    fom = to_numpy(fom, num_grid_elements=num_grid_elements)
     fom = fom.with_(operator=simplify(fom.operator), rhs=simplify(fom.rhs))
 
     return fom, fom_data, coercivity_estimate

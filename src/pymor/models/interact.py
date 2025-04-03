@@ -284,9 +284,9 @@ def interact(model, parameter_space, show_solution=True, visualizer=None, transf
 
 
 def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, output_function=None,
-                             objective_function=None, optimal_parameter=None, optimization_bg_image=None,
-                             optimization_bg_image_limits=None, show_solution=True, visualizer=None,
-                             optimization_method='Nelder-Mead', optimization_options={}):
+                             objective_function=None, initial_parameter=None, optimal_parameter=None,
+                             optimization_bg_image=None, optimization_bg_image_limits=None, show_solution=True,
+                             visualizer=None, optimization_method='Nelder-Mead', optimization_options={}):
     """Interactively explore |Model| in jupyter environment.
 
     This method dynamically creates a set of `ipywidgets` to interactively visualize
@@ -468,7 +468,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         scenarios_numbers['monte_carlo'] = len(scenarios_numbers)
     ## Parameter optimization
     if objective_function:
-        button_start_optimization = Button(description='Start', disabled=False)
+        button_initialization_optimization = Button(description='Initialization', disabled=False)
+        button_start_optimization = Button(description='Start', disabled=True)
         button_stop_optimization = Button(description='Stop', disabled=True)
         label_current_objective_function_value = Label('Objective function value: ')
         current_objective_function_value = Label('')
@@ -484,9 +485,6 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         fig_objective_functional_value.canvas.layout.flex = '1 0 320px'
         fig_objective_functional_value.set_figwidth(320 / 100)
         fig_objective_functional_value.set_figheight(200 / 100)
-        for k, name in enumerate(model_names):
-            ax_objective_functional_value.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
-        fig_objective_functional_value.legend()
         ax_objective_functional_value.set_yscale('log')
         ax_objective_functional_value.set_xlabel('Optimization step')
         objective_function_value_widget = fig_objective_functional_value.canvas
@@ -515,8 +513,6 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     sm.set_clim(vmin=optimization_bg_image_limits[0], vmax=optimization_bg_image_limits[1])
                     fig_current_optimization_parameter.colorbar(sm, ax=ax_current_optimization_parameter)
 
-            for k, name in enumerate(model_names):
-                ax_current_optimization_parameter.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
             if optimal_parameter:
                 ax_current_optimization_parameter.scatter([optimal_parameter.to_numpy()[0]],
                                                           [optimal_parameter.to_numpy()[1]],
@@ -526,7 +522,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             ax_current_optimization_parameter.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
             current_optimization_parameter_widget = fig_current_optimization_parameter.canvas
 
-        scenarios.append(VBox([HBox([button_start_optimization, button_stop_optimization]),
+        scenarios.append(VBox([HBox([button_initialization_optimization, button_start_optimization,
+                                     button_stop_optimization]),
                                HBox([label_current_objective_function_value, current_objective_function_value]),
                                HBox([label_current_optimization_parameter, current_optimization_parameter]),
                                objective_function_value_widget,
@@ -615,12 +612,36 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     global optimization_running
                     optimization_running = False
 
+        def do_initialization_optimization(_):
+            button_start_optimization.disabled = False
+            if initial_parameter:
+                global initial_guess
+                initial_guess = initial_parameter.to_numpy()
+                global optimization_running
+                optimization_running = True
+                do_parameter_update(initial_parameter, s_out=statistics_out, m_out=model_information_out)
+                optimization_running = False
+                ax_current_optimization_parameter.clear()
+                if optimization_bg_image:
+                    bg_img = plt.imread(optimization_bg_image)
+                    ax_current_optimization_parameter.imshow(bg_img, extent=[parameter_bounds[0][0], parameter_bounds[0][1],
+                                                                             parameter_bounds[1][0], parameter_bounds[1][1]])
+
+                if optimal_parameter:
+                    ax_current_optimization_parameter.scatter([optimal_parameter.to_numpy()[0]],
+                                                              [optimal_parameter.to_numpy()[1]],
+                                                              c="red", marker="x", label="Optimum")
+                ax_current_optimization_parameter.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
+                ax_current_optimization_parameter.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
+                current_optimization_parameter_widget.draw()
+
         def do_start_optimization(_):
             global optimization_running
             if not optimization_running:
                 optimization_running = True
                 global optimization_interrupted
                 optimization_interrupted = False
+            button_initialization_optimization.disabled = True
             button_start_optimization.disabled = True
             button_stop_optimization.disabled = False
             if has_output and output_scalar:
@@ -639,6 +660,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             if optimization_running:
                 global optimization_interrupted
                 optimization_interrupted = True
+            button_initialization_optimization.disabled = False
             button_start_optimization.disabled = False
             button_stop_optimization.disabled = True
             if has_output and output_scalar:
@@ -647,6 +669,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             scenarios_accordion.children[0].set_title(scenarios_numbers['parameter_optimization'],
                                                       'Parameter optimization')
 
+        button_initialization_optimization.on_click(do_initialization_optimization)
         button_start_optimization.on_click(do_start_optimization)
         button_stop_optimization.on_click(do_stop_optimization)
 
@@ -790,12 +813,18 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     current_optimization_parameter.value = str(mu.to_numpy())
 
                     if model_hierarchy.parameters.dim == 2:
-                        ax_current_optimization_parameter.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]], c=colors[num_tols], label=f"Tol: {tols[-1]}")
+                        ax_current_optimization_parameter.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]], c=colors[num_tols], label=f"Tol: {tols[-1]:.3e}")
+                        handles, labels = ax_current_optimization_parameter.get_legend_handles_labels()
+                        by_label = dict(zip(labels, handles))
+                        fig_current_optimization_parameter.legend(by_label.values(), by_label.keys())
                         current_optimization_parameter_widget.draw()
 
                     # TODO: Get model used for computation or tolerance values... and use corresponding color to distinguish them!
                     # TODO: Get optimization iteration and not global_counter!
-                    ax_objective_functional_value.scatter([global_counter], [quantity_of_interest], c=colors[0], marker=marker_styles[0])
+                    ax_objective_functional_value.scatter([global_counter], [quantity_of_interest], c=colors[num_tols], label=f"Tol: {tols[-1]:.3e}")
+                    handles, labels = ax_objective_functional_value.get_legend_handles_labels()
+                    by_label = dict(zip(labels, handles))
+                    fig_objective_functional_value.legend(by_label.values(), by_label.keys())
                     low, high = ax_objective_functional_value.get_ylim()
                     ax_objective_functional_value.set_ylim(min(low, quantity_of_interest) * 0.9,
                                                            max(high, quantity_of_interest) * 1.1)

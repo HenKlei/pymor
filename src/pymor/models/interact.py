@@ -468,6 +468,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         scenarios_numbers['monte_carlo'] = len(scenarios_numbers)
     ## Parameter optimization
     if objective_function:
+        global optimization_iterations
+        optimization_iterations = 0
+
         button_initialization_optimization = Button(description='Initialization', disabled=False)
         button_start_optimization = Button(description='Start', disabled=True)
         button_stop_optimization = Button(description='Stop', disabled=True)
@@ -614,13 +617,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
         def do_initialization_optimization(_):
             button_start_optimization.disabled = False
+            global optimization_iterations
+            optimization_iterations = 0
+
             if initial_parameter:
-                global initial_guess
-                initial_guess = initial_parameter.to_numpy()
-                global optimization_running
-                optimization_running = True
-                do_parameter_update(initial_parameter, s_out=statistics_out, m_out=model_information_out)
-                optimization_running = False
                 ax_current_optimization_parameter.clear()
                 if optimization_bg_image:
                     bg_img = plt.imread(optimization_bg_image)
@@ -634,6 +634,18 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 ax_current_optimization_parameter.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
                 ax_current_optimization_parameter.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
                 current_optimization_parameter_widget.draw()
+
+                ax_objective_functional_value.clear()
+                objective_function_value_widget.draw()
+
+                global initial_guess
+                initial_guess = initial_parameter.to_numpy()
+                global optimization_running
+                optimization_running = True
+                global optimization_interrupted
+                optimization_interrupted = False
+                do_parameter_update(initial_parameter, s_out=statistics_out, m_out=model_information_out)
+                optimization_running = False
 
         def do_start_optimization(_):
             global optimization_running
@@ -806,28 +818,32 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 if optimization_interrupted:
                     raise OptimizationInterruptedError
                 else:
-                    # TODO: Update plots of optimization trajectory
-                    # in parameter space and objective function values!
+                    global optimization_iterations
+                    optimization_iterations = optimization_iterations + 1
+
                     quantity_of_interest = objective_function(model_hierarchy, mu)
                     current_objective_function_value.value = str(quantity_of_interest)
                     current_optimization_parameter.value = str(mu.to_numpy())
 
                     if model_hierarchy.parameters.dim == 2:
-                        ax_current_optimization_parameter.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]], c=colors[num_tols], label=f"Tol: {tols[-1]:.3e}")
+                        ax_current_optimization_parameter.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]],
+                                                                  c=colors[num_tols], label=f"Tol: {tols[-1]:.3e}")
                         handles, labels = ax_current_optimization_parameter.get_legend_handles_labels()
                         by_label = dict(zip(labels, handles))
                         fig_current_optimization_parameter.legend(by_label.values(), by_label.keys())
                         current_optimization_parameter_widget.draw()
 
-                    # TODO: Get model used for computation or tolerance values... and use corresponding color to distinguish them!
-                    # TODO: Get optimization iteration and not global_counter!
-                    ax_objective_functional_value.scatter([global_counter], [quantity_of_interest], c=colors[num_tols], label=f"Tol: {tols[-1]:.3e}")
+                    ax_objective_functional_value.scatter([optimization_iterations], [quantity_of_interest],
+                                                          c=colors[num_tols], label=f"Tol: {tols[-1]:.3e}")
                     handles, labels = ax_objective_functional_value.get_legend_handles_labels()
                     by_label = dict(zip(labels, handles))
                     fig_objective_functional_value.legend(by_label.values(), by_label.keys())
                     low, high = ax_objective_functional_value.get_ylim()
-                    ax_objective_functional_value.set_ylim(min(low, quantity_of_interest) * 0.9,
-                                                           max(high, quantity_of_interest) * 1.1)
+                    if quantity_of_interest < low:
+                        low = 0.9 * quantity_of_interest
+                    if quantity_of_interest > high:
+                        high = quantity_of_interest * 1.1
+                    ax_objective_functional_value.set_ylim(low, high)
                     objective_function_value_widget.draw()
 
                     collected_optimization_data.append({'point': mu, 'val': quantity_of_interest})
@@ -844,7 +860,5 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
 
     # TODO: Mention current status (solving, training, estimating, etc.) somewhere
-    # TODO: Implement parameter optimization example
-    # TODO: Change parameter sliders when using Monte Carlo
     # TODO: If 2d parameter space: Select parameter by clicking on parameter set
     # + visualize selected parameters + non-uniform density for parameter selection in Monte Carlo

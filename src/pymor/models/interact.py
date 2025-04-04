@@ -353,8 +353,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     # Parameter selector
     parameter_selector = ParameterSelector(parameter_space, time_dependent=not isinstance(model_hierarchy,
                                                                                           StationaryModel))
-    parameter_titles = ['Manual parameter selection']
-    parameter_children = [parameter_selector.widget]
+    parameter_title = 'Manual parameter selection'
+    parameter_widget = parameter_selector.widget
 
     if model_hierarchy.parameters.dim == 2:
         fig_parameter_selection_onclick, ax_parameter_selection_onclick = plt.subplots(1, 1)
@@ -375,18 +375,13 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
         def onclick_param(event):
             mu = model_hierarchy.parameters.parse([event.xdata, event.ydata])
-            do_parameter_update(mu, s_out=statistics_out, m_out=model_information_out)
-            ax_parameter_selection_onclick.scatter([event.xdata], [event.ydata])
+            do_parameter_update(mu, s_out=statistics_out)#, m_out=model_information_out)
+            ax_parameter_selection_onclick.scatter([event.xdata], [event.ydata], c=colors[-1])
             fig_parameter_selection_onclick.canvas.draw()
 
         cid = fig_parameter_selection_onclick.canvas.mpl_connect('button_press_event', onclick_param)
 
-        parameter_selector.widget.children = tuple(list(parameter_selector.widget.children)
-                                                   + [fig_parameter_selection_onclick.canvas])
-
-    left_pane.append(Accordion(titles=parameter_titles,
-                               children=parameter_children,
-                               selected_index=0))
+        parameter_widget = fig_parameter_selection_onclick.canvas
 
     assert len(model_names) == model_hierarchy.num_models
 
@@ -446,34 +441,52 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             visualizer_children = [VBox([visualizer_widget,
                                          HBox([solution_visualizer_player, solution_time_step_slider])])]
 
-        right_pane.append(Accordion(titles=['Solution'], children=visualizer_children, selected_index=0))
+        left_pane.append(Accordion(titles=['Solution'], children=visualizer_children, selected_index=0))
 
-    # Output
-    output_scalar = False
-    if has_output:
-        output = data['output'].ravel()
-        if output.shape == (1,) or output_function:
-            output_scalar = True
-            if output_function:
-                output = output_function(output)
+    # Error estimates
+    fig_error_estimates, ax_error_estimates = plt.subplots(1, 1)
+    fig_error_estimates.canvas.header_visible = False
+    #fig_error_estimates.canvas.layout.width = '50%'
+    fig_error_estimates.canvas.layout.flex = '1 0 320px'
+    fig_error_estimates.set_figwidth(320 / 100)
+    fig_error_estimates.set_figheight(200 / 100)
+    for k, name in enumerate(model_names[:-1]):
+        ax_error_estimates.scatter([], [], c=colors[k], label=f'{name}')
+    for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names[:-1])):
+        if est_err is not None:
+            ax_error_estimates.scatter([global_counter], [est_err], c=colors[k])
+    inputs_to_tolerances = [global_counter]
+    tolerances = [model_hierarchy.get_tolerance()]
+    line_tolerances = ax_error_estimates.plot(inputs_to_tolerances, tolerances, c=colors[-1], label='Tolerance')[0]
+    fig_error_estimates.legend()
+    ax_error_estimates.set_yscale('log')
+    error_estimates_widget = fig_error_estimates.canvas
+    error_estimates_accordion = Accordion(titles=['Error estimates'], children=[error_estimates_widget],
+                                          selected_index=0)
+    left_pane.append(error_estimates_accordion)
 
-            fig_output, ax_output = plt.subplots(1, 1)
-            fig_output.canvas.header_visible = False
-            #fig_output.canvas.layout.width = '50%'
-            fig_output.canvas.layout.flex = '1 0 320px'
-            fig_output.set_figwidth(320 / 100)
-            fig_output.set_figheight(200 / 100)
-            for k, name in enumerate(model_names):
-                ax_output.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
-            ax_output.scatter([global_counter], [output], c=colors[mod_num], marker=marker_styles[1])
-
-            ax_output.plot([0], [0], c=colors[-1], label='Estimated mean')
-            ax_output.plot([0], [0], c=colors[-2], label='Estimated variance')
-            line_mean_estimates = ax_output.plot([0], [0], c=colors[-1], marker=marker_styles[1])[0]
-            line_variance_estimates = ax_output.plot([0], [0], c=colors[-2], marker=marker_styles[1])[0]
-            fig_output.legend()
-            output_widget = fig_output.canvas
-            right_pane.append(Accordion(titles=['Outputs'], children=[output_widget], selected_index=0))
+    # Timings
+    fig_timings, ax_timings = plt.subplots(1, 1)
+    fig_timings.canvas.header_visible = False
+    #fig_timings.canvas.layout.width = '50%'
+    fig_timings.canvas.layout.flex = '1 0 320px'
+    fig_timings.set_figwidth(320 / 100)
+    fig_timings.set_figheight(200 / 100)
+    for k, (runtime, name) in enumerate(zip(data['runtimes'], model_names)):
+        if k > 0:
+            ax_timings.bar(global_counter, runtime, bottom=np.sum(data['runtimes'][:k]), color=colors[k],
+                           edgecolor='black', label=f'{name} evaluation')
+        else:
+            ax_timings.bar(global_counter, runtime, color=colors[k], edgecolor='black', label=f'{name} evaluation')
+    for k, name in enumerate(model_names[:-1]):
+        ax_timings.bar(global_counter, 0., color=colors[k], edgecolor='black', hatch='//', label=f'{name} training')
+    for k, training_time in enumerate(data['training_times']):
+        ax_timings.bar(global_counter, training_time, bottom=np.sum(data['runtimes']), color=colors[k],
+                       edgecolor='black', hatch='//')
+    ax_timings.set_yscale('log')
+    fig_timings.legend()
+    timings_widget = fig_timings.canvas
+    left_pane.append(Accordion(titles=['Timings'], children=[timings_widget], selected_index=0))
 
     # Statistics
     statistics_out = Output()
@@ -489,9 +502,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         s_out.append_display_data(statistics_table)
 
     do_update_statistics(statistics_out)
-    right_pane.append(Accordion(titles=['Evaluation statistics'], children=[statistics_out], selected_index=0))
+    left_pane.append(Accordion(titles=['Evaluation statistics'], children=[statistics_out], selected_index=0))
 
     # Model information
+    """
     model_information_out = Output()
 
     def do_update_model_information(m_out):
@@ -503,32 +517,64 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
     do_update_model_information(model_information_out)
     right_pane.append(Accordion(titles=['Information on models'], children=[model_information_out], selected_index=0))
+    """
 
     # Scenarios
-    scenarios = []
-    scenarios_titles = []
-    scenarios_numbers = {}
+    scenarios = [parameter_widget]
+    scenarios_titles = [parameter_title]
+    scenarios_numbers = {'manual_parameter_selection': 0}
     ## Monte Carlo
-    if has_output and output_scalar:
-        button_start_monte_carlo = Button(description='Start', disabled=False)
-        button_stop_monte_carlo = Button(description='Stop', disabled=True)
-        label_current_number_samples = Label('Number of samples: ')
-        label_current_estimated_mean = Label('Current estimated mean: ')
-        label_current_estimated_variance = Label('Current estimated variance: ')
-        current_number_samples = Label('0')
-        current_estimated_mean = Label('-')
-        current_estimated_variance = Label('-')
-        mean_estimates = []
-        variance_estimates = []
-        global monte_carlo_running
-        monte_carlo_running = False
+    output_scalar = False
+    if has_output:
+        output = data['output'].ravel()
+        if output.shape == (1,) or output_function:
+            output_scalar = True
+            if output_function:
+                output = output_function(output)
+            outputs.append(output)
+            inputs_to_outputs.append(global_counter)
 
-        scenarios.append(VBox([HBox([button_start_monte_carlo, button_stop_monte_carlo]),
-                               HBox([label_current_number_samples, current_number_samples]),
-                               HBox([label_current_estimated_mean, current_estimated_mean]),
-                               HBox([label_current_estimated_variance, current_estimated_variance])]))
-        scenarios_titles.append('Monte Carlo estimation')
-        scenarios_numbers['monte_carlo'] = len(scenarios_numbers)
+            mean_estimates = []
+            mean_estimates = [output]
+
+            fig_output, ax_output = plt.subplots(1, 1)
+            fig_output.suptitle('Outputs and estimated statistics')
+            fig_output.canvas.header_visible = False
+            #fig_output.canvas.layout.width = '50%'
+            fig_output.canvas.layout.flex = '1 0 320px'
+            fig_output.set_figwidth(320 / 100)
+            fig_output.set_figheight(200 / 100)
+            for k, name in enumerate(model_names):
+                ax_output.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
+            ax_output.scatter([global_counter], [output], c=colors[mod_num], marker=marker_styles[1])
+
+            ax_output.plot([0], [0], c=colors[-1], label='Estimated mean')
+            #ax_output.plot([0], [0], c=colors[-2], label='Estimated variance')
+            line_mean_estimates = ax_output.plot([global_counter], [output], c=colors[-1], marker=marker_styles[1])[0]
+            #line_variance_estimates = ax_output.plot([0], [0], c=colors[-2], marker=marker_styles[1])[0]
+            fig_output.legend()
+            output_widget = fig_output.canvas
+            #right_pane.append(Accordion(titles=['Outputs'], children=[output_widget], selected_index=0))
+
+            button_start_monte_carlo = Button(description='Start', disabled=False)
+            button_stop_monte_carlo = Button(description='Stop', disabled=True)
+            label_current_number_samples = Label('Number of samples: ')
+            label_current_estimated_mean = Label('Current estimated mean: ')
+            label_current_estimated_variance = Label('Current estimated variance: ')
+            current_number_samples = Label('0')
+            current_estimated_mean = Label('-')
+            current_estimated_variance = Label('-')
+            variance_estimates = []
+            global monte_carlo_running
+            monte_carlo_running = False
+
+            scenarios.append(VBox([HBox([button_start_monte_carlo, button_stop_monte_carlo]),
+                                   HBox([label_current_number_samples, current_number_samples]),
+                                   HBox([label_current_estimated_mean, current_estimated_mean]),
+                                   HBox([label_current_estimated_variance, current_estimated_variance]),
+                                   output_widget]))
+            scenarios_titles.append('Monte Carlo estimation')
+            scenarios_numbers['monte_carlo'] = len(scenarios_numbers)
     ## Parameter optimization
     if objective_function:
         global optimization_iterations
@@ -551,6 +597,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         fig_objective_functional_value.canvas.layout.flex = '1 0 320px'
         fig_objective_functional_value.set_figwidth(320 / 100)
         fig_objective_functional_value.set_figheight(200 / 100)
+        fig_objective_functional_value.tight_layout()
         ax_objective_functional_value.set_yscale('log')
         ax_objective_functional_value.set_xlabel('Optimization step')
         objective_function_value_widget = fig_objective_functional_value.canvas
@@ -603,11 +650,11 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                                     selected_index=0)
 
     if has_output and output_scalar:
-        def run_monte_carlo(s_out, m_out):
+        def run_monte_carlo(s_out):#, m_out):
             global monte_carlo_running
             while monte_carlo_running:
                 mu = parameter_space.sample_randomly()
-                do_parameter_update(mu, s_out, m_out)
+                do_parameter_update(mu, s_out)#, m_out)
 
         def do_start_monte_carlo(_):
             global monte_carlo_running
@@ -623,7 +670,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
             from pymor.tools.random import spawn_rng
             thread_monte_carlo = threading.Thread(target=spawn_rng(run_monte_carlo),
-                                                  args=(statistics_out, model_information_out))
+                                                  args=(statistics_out, ))#model_information_out))
             if not thread_monte_carlo.is_alive():
                 thread_monte_carlo.start()
 
@@ -664,8 +711,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             global initial_guess
             while True:
                 try:
-                    optimization_results = scipy_optimize(partial(do_parameter_update, s_out=statistics_out,
-                                                                  m_out=model_information_out),
+                    optimization_results = scipy_optimize(partial(do_parameter_update, s_out=statistics_out),#,
+                                                                  #m_out=model_information_out),
                                                           x0=initial_guess, method=optimization_method,
                                                           bounds=parameter_bounds, options=optimization_options)
                     print(f"Optimization result: {optimization_results}")
@@ -698,6 +745,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 current_optimization_parameter_widget.draw()
 
                 ax_objective_functional_value.clear()
+                ax_objective_functional_value.set_yscale('log')
+                ax_objective_functional_value.set_xlabel('Optimization step')
                 objective_function_value_widget.draw()
 
                 global initial_guess
@@ -706,7 +755,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 optimization_running = True
                 global optimization_interrupted
                 optimization_interrupted = False
-                do_parameter_update(initial_parameter, s_out=statistics_out, m_out=model_information_out)
+                do_parameter_update(initial_parameter, s_out=statistics_out)#, m_out=model_information_out)
                 optimization_running = False
 
         def do_start_optimization(_):
@@ -747,52 +796,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         button_start_optimization.on_click(do_start_optimization)
         button_stop_optimization.on_click(do_stop_optimization)
 
-    left_pane.append(scenarios_accordion)
-
-    # Error estimates
-    fig_error_estimates, ax_error_estimates = plt.subplots(1, 1)
-    fig_error_estimates.canvas.header_visible = False
-    #fig_error_estimates.canvas.layout.width = '50%'
-    fig_error_estimates.canvas.layout.flex = '1 0 320px'
-    fig_error_estimates.set_figwidth(320 / 100)
-    fig_error_estimates.set_figheight(200 / 100)
-    for k, name in enumerate(model_names[:-1]):
-        ax_error_estimates.scatter([], [], c=colors[k], label=f'{name}')
-    for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names[:-1])):
-        if est_err is not None:
-            ax_error_estimates.scatter([global_counter], [est_err], c=colors[k])
-    inputs_to_tolerances = [global_counter]
-    tolerances = [model_hierarchy.get_tolerance()]
-    line_tolerances = ax_error_estimates.plot(inputs_to_tolerances, tolerances, c=colors[-1], label='Tolerance')[0]
-    fig_error_estimates.legend()
-    ax_error_estimates.set_yscale('log')
-    error_estimates_widget = fig_error_estimates.canvas
-    error_estimates_accordion = Accordion(titles=['Error estimates'], children=[error_estimates_widget],
-                                          selected_index=0)
-    left_pane.append(error_estimates_accordion)
-
-    # Timings
-    fig_timings, ax_timings = plt.subplots(1, 1)
-    fig_timings.canvas.header_visible = False
-    #fig_timings.canvas.layout.width = '50%'
-    fig_timings.canvas.layout.flex = '1 0 320px'
-    fig_timings.set_figwidth(320 / 100)
-    fig_timings.set_figheight(200 / 100)
-    for k, (runtime, name) in enumerate(zip(data['runtimes'], model_names)):
-        if k > 0:
-            ax_timings.bar(global_counter, runtime, bottom=np.sum(data['runtimes'][:k]), color=colors[k],
-                           edgecolor='black', label=f'{name} evaluation')
-        else:
-            ax_timings.bar(global_counter, runtime, color=colors[k], edgecolor='black', label=f'{name} evaluation')
-    for k, name in enumerate(model_names[:-1]):
-        ax_timings.bar(global_counter, 0., color=colors[k], edgecolor='black', hatch='//', label=f'{name} training')
-    for k, training_time in enumerate(data['training_times']):
-        ax_timings.bar(global_counter, training_time, bottom=np.sum(data['runtimes']), color=colors[k],
-                       edgecolor='black', hatch='//')
-    ax_timings.set_yscale('log')
-    fig_timings.legend()
-    timings_widget = fig_timings.canvas
-    left_pane.append(Accordion(titles=['Timings'], children=[timings_widget], selected_index=0))
+    right_pane.append(scenarios_accordion)
 
     right_pane = VBox(right_pane)
     right_pane.layout.width = '50%'
@@ -801,7 +805,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     widget = HBox([left_pane, right_pane])
     widget.layout.grid_gap = '2%'
 
-    def do_parameter_update(mu, s_out, m_out):
+    def do_parameter_update(mu, s_out):#, m_out):
         global global_counter
         global_counter = global_counter + 1
 
@@ -839,8 +843,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
             global monte_carlo_running
             if monte_carlo_running:
-                inputs_to_outputs.append(global_counter)
                 current_number_samples.value = str(len(outputs))
+                inputs_to_outputs.append(global_counter)
                 mean_estimate = np.mean(np.array(outputs), axis=0)
                 mean_estimates.append(mean_estimate)
                 current_estimated_mean.value = str(np.mean(np.array(outputs), axis=0))
@@ -848,20 +852,23 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 variance_estimates.append(variance_estimate)
                 current_estimated_variance.value = str(np.var(np.array(outputs), axis=0))
                 line_mean_estimates.set_data(np.array(inputs_to_outputs), np.array(mean_estimates))
-                line_variance_estimates.set_data(np.array(inputs_to_outputs), np.array(mean_estimates))
+                #line_variance_estimates.set_data(np.array(inputs_to_outputs)[1:], np.array(variance_estimates))
+                output_widget.draw()
 
         for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names)):
             if est_err is not None:
                 ax_error_estimates.scatter([global_counter], [est_err], c=colors[k])
         low, high = ax_error_estimates.get_ylim()
         arr_err_ests = np.array(data['error_estimates'])
-        ax_error_estimates.set_ylim(min(low, np.min(arr_err_ests[arr_err_ests != np.array(None)]) * 0.9),
-                                    max(high, np.max(arr_err_ests[arr_err_ests != np.array(None)]) * 1.1))
-        error_estimates_widget.draw()
+        ax_error_estimates.set_ylim(min(low, np.min(arr_err_ests[arr_err_ests != np.array(None)]) * 0.9,
+                                        model_hierarchy.get_tolerance() * 0.9),
+                                    max(high, np.max(arr_err_ests[arr_err_ests != np.array(None)]) * 1.1,
+                                        model_hierarchy.get_tolerance() * 1.1))
 
         inputs_to_tolerances.append(global_counter)
         tolerances.append(model_hierarchy.get_tolerance())
         line_tolerances.set_data(np.array(inputs_to_tolerances), np.array(tolerances))
+        error_estimates_widget.draw()
 
         for k, runtime in enumerate(data['runtimes']):
             if k > 0:
@@ -877,7 +884,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         timings_widget.draw()
 
         do_update_statistics(s_out)
-        do_update_model_information(m_out)
+        #do_update_model_information(m_out)
 
         if objective_function:
             global optimization_running
@@ -907,22 +914,19 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     by_label = dict(zip(labels, handles))
                     fig_objective_functional_value.legend(by_label.values(), by_label.keys())
                     low, high = ax_objective_functional_value.get_ylim()
-                    if quantity_of_interest < low:
-                        low = 0.9 * quantity_of_interest
-                    if quantity_of_interest > high:
-                        high = quantity_of_interest * 1.1
-                    ax_objective_functional_value.set_ylim(low, high)
+                    ax_objective_functional_value.set_ylim(min(low, quantity_of_interest * 0.9),
+                                                           max(high, quantity_of_interest * 1.1))
                     objective_function_value_widget.draw()
 
                     collected_optimization_data.append({'point': mu, 'val': quantity_of_interest})
                     return quantity_of_interest
 
-    def do_manual_parameter_update(mu, s_out, m_out):
+    def do_manual_parameter_update(mu, s_out):#, m_out):
         global initial_guess
         initial_guess = mu.to_numpy()
-        return do_parameter_update(mu, s_out, m_out)
+        return do_parameter_update(mu, s_out)#, m_out)
 
-    parameter_selector.on_change(partial(do_manual_parameter_update, s_out=statistics_out, m_out=model_information_out))
+    parameter_selector.on_change(partial(do_manual_parameter_update, s_out=statistics_out))#, m_out=model_information_out))
 
     return widget
 

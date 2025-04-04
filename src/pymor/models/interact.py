@@ -823,7 +823,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             global current_sol
             current_sol = U
             visualizer.set(U[-1])
-            solution_time_step_slider.value = len(U)-1
+            if len(U) > 1:
+                solution_visualizer_player.playing = False
+                solution_time_step_slider.value = len(U)-1
             visualizer_widget.draw()
         if has_output and output_scalar:
             output = data['output'].ravel()

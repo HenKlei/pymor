@@ -364,6 +364,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         fig_parameter_selection_onclick.canvas.layout.flex = '1 0 320px'
         fig_parameter_selection_onclick.set_figwidth(320 / 100)
         fig_parameter_selection_onclick.set_figheight(200 / 100)
+        ax_parameter_selection_onclick.set_xlabel(str(list(model_hierarchy.parameters.keys())[0]))
+        ax_parameter_selection_onclick.set_ylabel(str(list(model_hierarchy.parameters.keys())[1]))
+        fig_parameter_selection_onclick.tight_layout()
 
         parameter_bounds = []
         for kk in parameter_space.ranges:
@@ -375,7 +378,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
         def onclick_param(event):
             mu = model_hierarchy.parameters.parse([event.xdata, event.ydata])
-            do_parameter_update(mu, s_out=statistics_out)#, m_out=model_information_out)
+            do_parameter_update(mu, s_out=statistics_out)
             ax_parameter_selection_onclick.scatter([event.xdata], [event.ydata], c=colors[-1])
             fig_parameter_selection_onclick.canvas.draw()
 
@@ -466,7 +469,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     left_pane.append(error_estimates_accordion)
 
     # Timings
-    fig_timings, ax_timings = plt.subplots(1, 1)
+    fig_timings, ax_timings = plt.subplots(1, 2)
+    ax_timings[0].set_title('Evaluation times')
+    ax_timings[1].set_title('Training times')
     fig_timings.canvas.header_visible = False
     #fig_timings.canvas.layout.width = '50%'
     fig_timings.canvas.layout.flex = '1 0 320px'
@@ -474,16 +479,15 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     fig_timings.set_figheight(200 / 100)
     for k, (runtime, name) in enumerate(zip(data['runtimes'], model_names)):
         if k > 0:
-            ax_timings.bar(global_counter, runtime, bottom=np.sum(data['runtimes'][:k]), color=colors[k],
-                           edgecolor='black', label=f'{name} evaluation')
+            ax_timings[0].bar(global_counter, runtime, bottom=np.sum(data['runtimes'][:k]), color=colors[k],
+                              edgecolor='black', label=f'{name} evaluation')
         else:
-            ax_timings.bar(global_counter, runtime, color=colors[k], edgecolor='black', label=f'{name} evaluation')
+            ax_timings[0].bar(global_counter, runtime, color=colors[k], edgecolor='black', label=f'{name} evaluation')
     for k, name in enumerate(model_names[:-1]):
-        ax_timings.bar(global_counter, 0., color=colors[k], edgecolor='black', hatch='//', label=f'{name} training')
+        ax_timings[1].bar(global_counter, 0., color=colors[k], edgecolor='black', hatch='//', label=f'{name} training')
     for k, training_time in enumerate(data['training_times']):
-        ax_timings.bar(global_counter, training_time, bottom=np.sum(data['runtimes']), color=colors[k],
-                       edgecolor='black', hatch='//')
-    ax_timings.set_yscale('log')
+        ax_timings[1].bar(global_counter, training_time, color=colors[k], edgecolor='black', hatch='//')
+    ax_timings[0].set_yscale('log')
     fig_timings.legend()
     timings_widget = fig_timings.canvas
     left_pane.append(Accordion(titles=['Timings'], children=[timings_widget], selected_index=0))
@@ -496,28 +500,14 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         temp[temp == 0] = 1.
         data_dict = {'Number of evaluations': model_hierarchy.num_successful_calls,
                      'Average runtime': np.array(model_hierarchy.runtimes) / temp,
-                     'Training time': model_hierarchy.training_times}
+                     'Training time': model_hierarchy.training_times,
+                     'Dimensions of models': [mod.solution_space.dim for mod in model_hierarchy.models]}
         statistics_table = pd.DataFrame(data=data_dict, index=model_names)
         s_out.outputs = ()
         s_out.append_display_data(statistics_table)
 
     do_update_statistics(statistics_out)
     left_pane.append(Accordion(titles=['Evaluation statistics'], children=[statistics_out], selected_index=0))
-
-    # Model information
-    """
-    model_information_out = Output()
-
-    def do_update_model_information(m_out):
-        model_information_table = VBox([HTMLWIDGET(value=f'<p><b>{model_name}:</b> {model}</p>',
-                                                   layout=Layout(width='90%'))
-                                        for model_name, model in zip(model_names, model_hierarchy.models)])
-        m_out.outputs = ()
-        m_out.append_display_data(model_information_table)
-
-    do_update_model_information(model_information_out)
-    right_pane.append(Accordion(titles=['Information on models'], children=[model_information_out], selected_index=0))
-    """
 
     # Scenarios
     scenarios = [parameter_widget]
@@ -549,12 +539,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             ax_output.scatter([global_counter], [output], c=colors[mod_num], marker=marker_styles[1])
 
             ax_output.plot([0], [0], c=colors[-1], label='Estimated mean')
-            #ax_output.plot([0], [0], c=colors[-2], label='Estimated variance')
             line_mean_estimates = ax_output.plot([global_counter], [output], c=colors[-1], marker=marker_styles[1])[0]
-            #line_variance_estimates = ax_output.plot([0], [0], c=colors[-2], marker=marker_styles[1])[0]
             fig_output.legend()
             output_widget = fig_output.canvas
-            #right_pane.append(Accordion(titles=['Outputs'], children=[output_widget], selected_index=0))
 
             button_start_monte_carlo = Button(description='Start', disabled=False)
             button_stop_monte_carlo = Button(description='Stop', disabled=True)
@@ -650,11 +637,11 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                                     selected_index=0)
 
     if has_output and output_scalar:
-        def run_monte_carlo(s_out):#, m_out):
+        def run_monte_carlo(s_out):
             global monte_carlo_running
             while monte_carlo_running:
                 mu = parameter_space.sample_randomly()
-                do_parameter_update(mu, s_out)#, m_out)
+                do_parameter_update(mu, s_out)
 
         def do_start_monte_carlo(_):
             global monte_carlo_running
@@ -670,7 +657,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
             from pymor.tools.random import spawn_rng
             thread_monte_carlo = threading.Thread(target=spawn_rng(run_monte_carlo),
-                                                  args=(statistics_out, ))#model_information_out))
+                                                  args=(statistics_out, ))
             if not thread_monte_carlo.is_alive():
                 thread_monte_carlo.start()
 
@@ -711,8 +698,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             global initial_guess
             while True:
                 try:
-                    optimization_results = scipy_optimize(partial(do_parameter_update, s_out=statistics_out),#,
-                                                                  #m_out=model_information_out),
+                    optimization_results = scipy_optimize(partial(do_parameter_update, s_out=statistics_out),
                                                           x0=initial_guess, method=optimization_method,
                                                           bounds=parameter_bounds, options=optimization_options)
                     print(f"Optimization result: {optimization_results}")
@@ -755,7 +741,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 optimization_running = True
                 global optimization_interrupted
                 optimization_interrupted = False
-                do_parameter_update(initial_parameter, s_out=statistics_out)#, m_out=model_information_out)
+                do_parameter_update(initial_parameter, s_out=statistics_out)
                 optimization_running = False
 
         def do_start_optimization(_):
@@ -805,7 +791,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     widget = HBox([left_pane, right_pane])
     widget.layout.grid_gap = '2%'
 
-    def do_parameter_update(mu, s_out):#, m_out):
+    def do_parameter_update(mu, s_out):
         global global_counter
         global_counter = global_counter + 1
 
@@ -852,7 +838,6 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 variance_estimates.append(variance_estimate)
                 current_estimated_variance.value = str(np.var(np.array(outputs), axis=0))
                 line_mean_estimates.set_data(np.array(inputs_to_outputs), np.array(mean_estimates))
-                #line_variance_estimates.set_data(np.array(inputs_to_outputs)[1:], np.array(variance_estimates))
                 output_widget.draw()
 
         for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names)):
@@ -872,19 +857,19 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
         for k, runtime in enumerate(data['runtimes']):
             if k > 0:
-                ax_timings.bar(global_counter, runtime, bottom=np.sum(data['runtimes'][:k]), color=colors[k],
-                               edgecolor='black')
+                ax_timings[0].bar(global_counter, runtime, bottom=np.sum(data['runtimes'][:k]), color=colors[k],
+                                  edgecolor='black')
             else:
-                ax_timings.bar(global_counter, runtime, color=colors[k], edgecolor='black')
+                ax_timings[0].bar(global_counter, runtime, color=colors[k], edgecolor='black')
         for k, training_time in enumerate(data['training_times']):
-            ax_timings.bar(global_counter, training_time, bottom=np.sum(data['runtimes']), color=colors[k],
-                           edgecolor='black', hatch='//')
-        _, high = ax_timings.get_ylim()
-        ax_timings.set_ylim(0., max(high, (np.sum(data['runtimes']) + np.sum(data['training_times'])) * 1.1))
+            ax_timings[1].bar(global_counter, training_time, color=colors[k], edgecolor='black', hatch='//')
+        _, high_0 = ax_timings[0].get_ylim()
+        _, high_1 = ax_timings[1].get_ylim()
+        ax_timings[0].set_ylim(0., max(high_0, np.sum(data['runtimes']) * 1.1))
+        ax_timings[1].set_ylim(0., max(high_1, np.sum(data['training_times']) * 1.1))
         timings_widget.draw()
 
         do_update_statistics(s_out)
-        #do_update_model_information(m_out)
 
         if objective_function:
             global optimization_running
@@ -921,12 +906,12 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     collected_optimization_data.append({'point': mu, 'val': quantity_of_interest})
                     return quantity_of_interest
 
-    def do_manual_parameter_update(mu, s_out):#, m_out):
+    def do_manual_parameter_update(mu, s_out):
         global initial_guess
         initial_guess = mu.to_numpy()
-        return do_parameter_update(mu, s_out)#, m_out)
+        return do_parameter_update(mu, s_out)
 
-    parameter_selector.on_change(partial(do_manual_parameter_update, s_out=statistics_out))#, m_out=model_information_out))
+    parameter_selector.on_change(partial(do_manual_parameter_update, s_out=statistics_out))
 
     return widget
 

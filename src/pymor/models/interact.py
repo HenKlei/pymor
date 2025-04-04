@@ -25,9 +25,12 @@ from ipywidgets import (
     FloatLogSlider,
     FloatSlider,
     HBox,
+    IntSlider,
     Label,
     Layout,
+    link,
     Output,
+    Play,
     Stack,
     Text,
     VBox,
@@ -311,6 +314,11 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     -------
     The created widgets as a single `ipywidget`.
     """
+    from IPython import get_ipython
+    from matplotlib import pyplot as plt
+    get_ipython().run_line_magic('matplotlib', 'ipympl')
+    plt.ioff()
+
     assert model_hierarchy.parameters == parameter_space.parameters
     if model_hierarchy.dim_input > 0:
         params = Parameters(model_hierarchy.parameters, input=model_hierarchy.dim_input)
@@ -345,8 +353,39 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     # Parameter selector
     parameter_selector = ParameterSelector(parameter_space, time_dependent=not isinstance(model_hierarchy,
                                                                                           StationaryModel))
-    left_pane.append(Accordion(titles=['Manual parameter selection'],
-                               children=[parameter_selector.widget],
+    parameter_titles = ['Manual parameter selection']
+    parameter_children = [parameter_selector.widget]
+
+    if model_hierarchy.parameters.dim == 2:
+        fig_parameter_selection_onclick, ax_parameter_selection_onclick = plt.subplots(1, 1)
+        fig_parameter_selection_onclick.suptitle('Selection from parameter space')
+        fig_parameter_selection_onclick.canvas.header_visible = False
+        #fig_parameter_selection_onclick.canvas.layout.width = '50%'
+        fig_parameter_selection_onclick.canvas.layout.flex = '1 0 320px'
+        fig_parameter_selection_onclick.set_figwidth(320 / 100)
+        fig_parameter_selection_onclick.set_figheight(200 / 100)
+
+        parameter_bounds = []
+        for kk in parameter_space.ranges:
+            for jj in range(parameter_space.parameters[kk]):
+                parameter_bounds.append((parameter_space.ranges[kk][0], parameter_space.ranges[kk][1]))
+        assert len(parameter_bounds) == 2
+        ax_parameter_selection_onclick.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
+        ax_parameter_selection_onclick.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
+
+        def onclick_param(event):
+            mu = model_hierarchy.parameters.parse([event.xdata, event.ydata])
+            do_parameter_update(mu, s_out=statistics_out, m_out=model_information_out)
+            ax_parameter_selection_onclick.scatter([event.xdata], [event.ydata])
+            fig_parameter_selection_onclick.canvas.draw()
+
+        cid = fig_parameter_selection_onclick.canvas.mpl_connect('button_press_event', onclick_param)
+
+        parameter_selector.widget.children = tuple(list(parameter_selector.widget.children)
+                                                   + [fig_parameter_selection_onclick.canvas])
+
+    left_pane.append(Accordion(titles=parameter_titles,
+                               children=parameter_children,
                                selected_index=0))
 
     assert len(model_names) == model_hierarchy.num_models
@@ -364,11 +403,6 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     global global_counter
     global_counter = 1
 
-    from IPython import get_ipython
-    from matplotlib import pyplot as plt
-    get_ipython().run_line_magic('matplotlib', 'ipympl')
-    plt.ioff()
-
     from matplotlib import markers
     marker_styles = list(markers.MarkerStyle.markers.keys())
 
@@ -380,10 +414,39 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         U = data['solution']
         mod_num = data['model_number']
         U = model_hierarchy.reconstruct(U, mod_num)
-        visualizer = (visualizer or model_hierarchy.visualize)#
+        global current_sol
+        current_sol = U
+        visualizer = (visualizer or model_hierarchy.visualize)
         visualizer_widget = visualizer.visualize(U[-1], return_widget=True)
         visualizer_widget.layout.flex = '0.6 0 auto'
-        right_pane.append(Accordion(titles=['Solution'], children=[visualizer_widget], selected_index=0))
+
+        visualizer_children = [visualizer_widget]
+        if len(U) > 1:
+            def update_plot(change):
+                i = change.new
+                global current_sol
+                visualizer.set(current_sol[i])
+                visualizer_widget.draw()
+
+            fps = 1
+            solution_visualizer_player = Play(
+                value=len(U)-1,
+                min=0,
+                max=len(U)-1,
+                step=1,
+                interval=int(1/round(fps)*1000)  # referesh interval in ms
+            )
+            solution_time_step_slider = IntSlider(
+                value=0,
+                min=0,
+                max=len(U)-1
+            )
+            solution_time_step_slider.observe(update_plot, names='value')
+            link((solution_visualizer_player, 'value'), (solution_time_step_slider, 'value'))
+            visualizer_children = [VBox([visualizer_widget,
+                                         HBox([solution_visualizer_player, solution_time_step_slider])])]
+
+        right_pane.append(Accordion(titles=['Solution'], children=visualizer_children, selected_index=0))
 
     # Output
     output_scalar = False
@@ -584,7 +647,6 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
         collected_optimization_data = []
 
-        # TODO: Allow to set initial guess via sliders! Activate start button afterwards!
         global initial_guess
         initial_guess = mu.to_numpy()
 
@@ -757,7 +819,11 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         mod_num = data['model_number']
         if show_solution:
             U = data['solution']
-            visualizer.set(model_hierarchy.reconstruct(U[-1], mod_num))
+            U = model_hierarchy.reconstruct(U, mod_num)
+            global current_sol
+            current_sol = U
+            visualizer.set(U[-1])
+            solution_time_step_slider.value = len(U)-1
             visualizer_widget.draw()
         if has_output and output_scalar:
             output = data['output'].ravel()
@@ -860,5 +926,4 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
 
     # TODO: Mention current status (solving, training, estimating, etc.) somewhere
-    # TODO: If 2d parameter space: Select parameter by clicking on parameter set
-    # + visualize selected parameters + non-uniform density for parameter selection in Monte Carlo
+    # TODO: If 2d parameter space: non-uniform density for parameter selection in Monte Carlo and visualization of the density

@@ -289,7 +289,8 @@ def interact(model, parameter_space, show_solution=True, visualizer=None, transf
 def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, output_function=None,
                              objective_function=None, initial_parameter=None, optimal_parameter=None,
                              optimization_bg_image=None, optimization_bg_image_limits=None, show_solution=True,
-                             visualizer=None, optimization_method='Nelder-Mead', optimization_options={}):
+                             visualizer=None, optimization_method='Nelder-Mead', optimization_options={},
+                             fig_width=17, fig_height=3):
     """Interactively explore |Model| in jupyter environment.
 
     This method dynamically creates a set of `ipywidgets` to interactively visualize
@@ -361,9 +362,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         fig_parameter_selection_onclick.suptitle('Selection from parameter space')
         fig_parameter_selection_onclick.canvas.header_visible = False
         #fig_parameter_selection_onclick.canvas.layout.width = '50%'
-        fig_parameter_selection_onclick.canvas.layout.flex = '1 0 320px'
-        fig_parameter_selection_onclick.set_figwidth(320 / 100)
-        fig_parameter_selection_onclick.set_figheight(200 / 100)
+        #fig_parameter_selection_onclick.canvas.layout.flex = '1 0 320px'
+        fig_parameter_selection_onclick.set_figwidth(fig_width)
+        fig_parameter_selection_onclick.set_figheight(fig_height)
         ax_parameter_selection_onclick.set_xlabel(str(list(model_hierarchy.parameters.keys())[0]))
         ax_parameter_selection_onclick.set_ylabel(str(list(model_hierarchy.parameters.keys())[1]))
         fig_parameter_selection_onclick.tight_layout()
@@ -415,8 +416,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         global current_sol
         current_sol = U
         visualizer = (visualizer or model_hierarchy.visualize)
-        visualizer_widget = visualizer.visualize(U[-1], return_widget=True)
-        visualizer_widget.layout.flex = '0.6 0 auto'
+        visualizer_widget = visualizer.visualize(U[-1], return_widget=True, fig_width=fig_width, fig_height=fig_height)
+        #visualizer_widget.layout.flex = '0.6 0 auto'
 
         visualizer_children = [visualizer_widget]
         if len(U) > 1:
@@ -450,9 +451,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     fig_error_estimates, ax_error_estimates = plt.subplots(1, 1)
     fig_error_estimates.canvas.header_visible = False
     #fig_error_estimates.canvas.layout.width = '50%'
-    fig_error_estimates.canvas.layout.flex = '1 0 320px'
-    fig_error_estimates.set_figwidth(320 / 100)
-    fig_error_estimates.set_figheight(200 / 100)
+    #fig_error_estimates.canvas.layout.flex = '1 0 320px'
+    fig_error_estimates.set_figwidth(fig_width)
+    fig_error_estimates.set_figheight(fig_height)
+    fig_error_estimates.tight_layout()
     for k, name in enumerate(model_names[:-1]):
         ax_error_estimates.scatter([], [], c=colors[k], label=f'{name}')
     for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names[:-1])):
@@ -474,9 +476,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     ax_timings[1].set_title('Training times')
     fig_timings.canvas.header_visible = False
     #fig_timings.canvas.layout.width = '50%'
-    fig_timings.canvas.layout.flex = '1 0 320px'
-    fig_timings.set_figwidth(320 / 100)
-    fig_timings.set_figheight(200 / 100)
+    #fig_timings.canvas.layout.flex = '1 0 320px'
+    fig_timings.set_figwidth(fig_width)
+    fig_timings.set_figheight(fig_height)
+    fig_timings.tight_layout()
     for k, (runtime, name) in enumerate(zip(data['runtimes'], model_names)):
         if k > 0:
             ax_timings[0].bar(global_counter, runtime, bottom=np.sum(data['runtimes'][:k]), color=colors[k],
@@ -531,9 +534,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             fig_output.suptitle('Outputs and estimated statistics')
             fig_output.canvas.header_visible = False
             #fig_output.canvas.layout.width = '50%'
-            fig_output.canvas.layout.flex = '1 0 320px'
-            fig_output.set_figwidth(320 / 100)
-            fig_output.set_figheight(200 / 100)
+            #fig_output.canvas.layout.flex = '1 0 320px'
+            fig_output.set_figwidth(fig_width)
+            fig_output.set_figheight(fig_height)
+            fig_output.tight_layout()
             for k, name in enumerate(model_names):
                 ax_output.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
             ax_output.scatter([global_counter], [output], c=colors[mod_num], marker=marker_styles[1])
@@ -581,9 +585,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         fig_objective_functional_value.suptitle('Objective function value')
         fig_objective_functional_value.canvas.header_visible = False
         #fig_objective_functional_value.canvas.layout.width = '50%'
-        fig_objective_functional_value.canvas.layout.flex = '1 0 320px'
-        fig_objective_functional_value.set_figwidth(320 / 100)
-        fig_objective_functional_value.set_figheight(200 / 100)
+        #fig_objective_functional_value.canvas.layout.flex = '1 0 320px'
+        fig_objective_functional_value.set_figwidth(fig_width)
+        fig_objective_functional_value.set_figheight(fig_height)
         fig_objective_functional_value.tight_layout()
         ax_objective_functional_value.set_yscale('log')
         ax_objective_functional_value.set_xlabel('Optimization step')
@@ -593,9 +597,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             fig_current_optimization_parameter.suptitle('Trajectory in parameter space')
             fig_current_optimization_parameter.canvas.header_visible = False
             #fig_current_optimization_parameter.canvas.layout.width = '50%'
-            fig_current_optimization_parameter.canvas.layout.flex = '1 0 320px'
-            fig_current_optimization_parameter.set_figwidth(320 / 100)
-            fig_current_optimization_parameter.set_figheight(200 / 100)
+            #fig_current_optimization_parameter.canvas.layout.flex = '1 0 320px'
+            fig_current_optimization_parameter.set_figwidth(fig_width)
+            fig_current_optimization_parameter.set_figheight(fig_height)
+            fig_current_optimization_parameter.tight_layout()
 
             parameter_bounds = []
             for kk in parameter_space.ranges:

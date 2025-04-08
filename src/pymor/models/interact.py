@@ -324,18 +324,46 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     if model_hierarchy.dim_input > 0:
         params = Parameters(model_hierarchy.parameters, input=model_hierarchy.dim_input)
         parameter_space = ParameterSpace(params, dict(parameter_space.ranges, input=[-1,1]))
+
+    parameter_bounds = []
+    for kk in parameter_space.ranges:
+        for jj in range(parameter_space.parameters[kk]):
+            parameter_bounds.append((parameter_space.ranges[kk][0], parameter_space.ranges[kk][1]))
+
+    list_of_reset_functions = []
+
     right_pane = []
     left_pane = []
+
+    # Reset button
+    reset_button = Button(description='Reset', disabled=False,
+                          layout=Layout(width='250px', height='50px'), button_style='warning')
+
+    def do_reset(_):
+        for f in list_of_reset_functions:
+            f()
+
+    reset_button.on_click(do_reset)
+    right_pane.append(Accordion(titles=['Reset all plots (retain model hierarchy)'],
+                                children=[reset_button], selected_index=0))
 
     # Tolerance
     high = 0
     low = -6
     tolerance_slider = FloatLogSlider(value=10**((low+high)/2), min=low, max=high, description='Tolerance:')
     tolerance_update_button = Button(description='Update', disabled=False)
+
     global num_tols
-    num_tols = -1
     global tols
-    tols = []
+
+    def reset_tols():
+        global num_tols
+        num_tols = -1
+        global tols
+        tols = []
+
+    reset_tols()
+    list_of_reset_functions.append(reset_tols)
 
     def do_tolerance_update(_):
         tol = tolerance_slider.value
@@ -344,6 +372,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         global tols
         tols.append(tol)
         model_hierarchy.set_tolerance(tol)
+
     do_tolerance_update(None)
 
     tolerance_update_button.on_click(do_tolerance_update)
@@ -361,21 +390,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         fig_parameter_selection_onclick, ax_parameter_selection_onclick = plt.subplots(1, 1)
         fig_parameter_selection_onclick.suptitle('Selection from parameter space')
         fig_parameter_selection_onclick.canvas.header_visible = False
-        #fig_parameter_selection_onclick.canvas.layout.width = '50%'
-        #fig_parameter_selection_onclick.canvas.layout.flex = '1 0 320px'
-        fig_parameter_selection_onclick.set_figwidth(fig_width)
-        fig_parameter_selection_onclick.set_figheight(fig_height)
-        ax_parameter_selection_onclick.set_xlabel(str(list(model_hierarchy.parameters.keys())[0]))
-        ax_parameter_selection_onclick.set_ylabel(str(list(model_hierarchy.parameters.keys())[1]))
-        fig_parameter_selection_onclick.tight_layout()
-
-        parameter_bounds = []
-        for kk in parameter_space.ranges:
-            for jj in range(parameter_space.parameters[kk]):
-                parameter_bounds.append((parameter_space.ranges[kk][0], parameter_space.ranges[kk][1]))
-        assert len(parameter_bounds) == 2
-        ax_parameter_selection_onclick.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
-        ax_parameter_selection_onclick.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
+        parameter_widget = fig_parameter_selection_onclick.canvas
 
         def onclick_param(event):
             mu = model_hierarchy.parameters.parse([event.xdata, event.ydata])
@@ -385,7 +400,19 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
         cid = fig_parameter_selection_onclick.canvas.mpl_connect('button_press_event', onclick_param)
 
-        parameter_widget = fig_parameter_selection_onclick.canvas
+        def reset_fig_parameter_selection_onclick():
+            ax_parameter_selection_onclick.clear()
+            assert len(parameter_bounds) == 2
+            fig_parameter_selection_onclick.set_figwidth(fig_width)
+            fig_parameter_selection_onclick.set_figheight(fig_height)
+            ax_parameter_selection_onclick.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
+            ax_parameter_selection_onclick.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
+            ax_parameter_selection_onclick.set_xlabel(str(list(model_hierarchy.parameters.keys())[0]))
+            ax_parameter_selection_onclick.set_ylabel(str(list(model_hierarchy.parameters.keys())[1]))
+            fig_parameter_selection_onclick.tight_layout()
+            parameter_widget.draw()
+
+        list_of_reset_functions.append(reset_fig_parameter_selection_onclick)
 
     assert len(model_names) == model_hierarchy.num_models
 
@@ -400,7 +427,13 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     colors = list(COLORS)
 
     global global_counter
-    global_counter = 1
+
+    def reset_global_counter():
+        global global_counter
+        global_counter = 0
+
+    reset_global_counter()
+    list_of_reset_functions.append(reset_global_counter)
 
     from matplotlib import markers
     marker_styles = list(markers.MarkerStyle.markers.keys())
@@ -417,7 +450,6 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         current_sol = U
         visualizer = (visualizer or model_hierarchy.visualize)
         visualizer_widget = visualizer.visualize(U[-1], return_widget=True, fig_width=fig_width, fig_height=fig_height)
-        #visualizer_widget.layout.flex = '0.6 0 auto'
 
         visualizer_children = [visualizer_widget]
         if len(U) > 1:
@@ -445,54 +477,78 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             visualizer_children = [VBox([visualizer_widget,
                                          HBox([solution_visualizer_player, solution_time_step_slider])])]
 
+        def reset_solution_visualization():
+            visualizer.reset()
+            visualizer_widget.draw()
+
+        list_of_reset_functions.append(reset_solution_visualization)
+
         left_pane.append(Accordion(titles=['Solution'], children=visualizer_children, selected_index=0))
 
     # Error estimates
     fig_error_estimates, ax_error_estimates = plt.subplots(1, 1)
-    fig_error_estimates.canvas.header_visible = False
-    #fig_error_estimates.canvas.layout.width = '50%'
-    #fig_error_estimates.canvas.layout.flex = '1 0 320px'
-    fig_error_estimates.set_figwidth(fig_width)
-    fig_error_estimates.set_figheight(fig_height)
-    fig_error_estimates.tight_layout()
-    for k, name in enumerate(model_names[:-1]):
-        ax_error_estimates.scatter([], [], c=colors[k], label=f'{name}')
-    for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names[:-1])):
-        if est_err is not None:
-            ax_error_estimates.scatter([global_counter], [est_err], c=colors[k])
-    inputs_to_tolerances = [global_counter]
-    tolerances = [model_hierarchy.get_tolerance()]
-    line_tolerances = ax_error_estimates.plot(inputs_to_tolerances, tolerances, c=colors[-1], label='Tolerance')[0]
-    fig_error_estimates.legend()
-    ax_error_estimates.set_yscale('log')
     error_estimates_widget = fig_error_estimates.canvas
     error_estimates_accordion = Accordion(titles=['Error estimates'], children=[error_estimates_widget],
                                           selected_index=0)
+
+    global line_tolerances
+    line_tolerances = None
+    global inputs_to_tolerances
+    inputs_to_tolerances = []
+    global tolerances
+    tolerances = []
+
+    def reset_fig_error_estimates():
+        ax_error_estimates.clear()
+        fig_error_estimates.canvas.header_visible = False
+        fig_error_estimates.set_figwidth(fig_width)
+        fig_error_estimates.set_figheight(fig_height)
+        fig_error_estimates.tight_layout()
+        fig_error_estimates.legends = []
+        for k, name in enumerate(model_names[:-1]):
+            ax_error_estimates.scatter([], [], c=colors[k], label=f'{name}')
+        for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names[:-1])):
+            if est_err is not None:
+                ax_error_estimates.scatter([], [], c=colors[k])
+        global inputs_to_tolerances
+        inputs_to_tolerances = []
+        global tolerances
+        tolerances = []
+        global line_tolerances
+        line_tolerances = ax_error_estimates.plot(inputs_to_tolerances, tolerances, c=colors[-1], label='Tolerance')[0]
+        fig_error_estimates.legend()
+        ax_error_estimates.set_yscale('symlog', linthresh=10**(-8))
+        error_estimates_widget.draw()
+
+    list_of_reset_functions.append(reset_fig_error_estimates)
+
     left_pane.append(error_estimates_accordion)
 
     # Timings
     fig_timings, ax_timings = plt.subplots(1, 2)
-    ax_timings[0].set_title('Evaluation times')
-    ax_timings[1].set_title('Training times')
-    fig_timings.canvas.header_visible = False
-    #fig_timings.canvas.layout.width = '50%'
-    #fig_timings.canvas.layout.flex = '1 0 320px'
-    fig_timings.set_figwidth(fig_width)
-    fig_timings.set_figheight(fig_height)
-    fig_timings.tight_layout()
-    for k, (runtime, name) in enumerate(zip(data['runtimes'], model_names)):
-        if k > 0:
-            ax_timings[0].bar(global_counter, runtime, bottom=np.sum(data['runtimes'][:k]), color=colors[k],
-                              edgecolor='black', label=f'{name} evaluation')
-        else:
-            ax_timings[0].bar(global_counter, runtime, color=colors[k], edgecolor='black', label=f'{name} evaluation')
-    for k, name in enumerate(model_names[:-1]):
-        ax_timings[1].bar(global_counter, 0., color=colors[k], edgecolor='black', hatch='//', label=f'{name} training')
-    for k, training_time in enumerate(data['training_times']):
-        ax_timings[1].bar(global_counter, training_time, color=colors[k], edgecolor='black', hatch='//')
-    ax_timings[0].set_yscale('log')
-    fig_timings.legend()
     timings_widget = fig_timings.canvas
+
+    def reset_fig_timings():
+        ax_timings[0].clear()
+        ax_timings[1].clear()
+        ax_timings[0].set_title('Evaluation times')
+        ax_timings[1].set_title('Training times')
+        fig_timings.canvas.header_visible = False
+        fig_timings.set_figwidth(fig_width)
+        fig_timings.set_figheight(fig_height)
+        fig_timings.tight_layout()
+        fig_timings.legends = []
+        for k, name in enumerate(model_names):
+            ax_timings[0].bar([0], [0], color=colors[k], edgecolor='black', label=f'{name} evaluation', width=0)
+        for k, name in enumerate(model_names[:-1]):
+            ax_timings[1].bar([0], [0], color=colors[k], edgecolor='black', hatch='//',
+                              label=f'{name} training', width=0)
+        ax_timings[0].set_yscale('symlog')
+        fig_timings.legend()
+        timings_widget.draw()
+
+    list_of_reset_functions.append(reset_fig_timings)
+
     left_pane.append(Accordion(titles=['Timings'], children=[timings_widget], selected_index=0))
 
     # Statistics
@@ -524,28 +580,31 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             output_scalar = True
             if output_function:
                 output = output_function(output)
-            outputs.append(output)
-            inputs_to_outputs.append(global_counter)
 
             mean_estimates = []
-            mean_estimates = [output]
 
             fig_output, ax_output = plt.subplots(1, 1)
-            fig_output.suptitle('Outputs and estimated statistics')
-            fig_output.canvas.header_visible = False
-            #fig_output.canvas.layout.width = '50%'
-            #fig_output.canvas.layout.flex = '1 0 320px'
-            fig_output.set_figwidth(fig_width)
-            fig_output.set_figheight(fig_height)
-            fig_output.tight_layout()
-            for k, name in enumerate(model_names):
-                ax_output.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
-            ax_output.scatter([global_counter], [output], c=colors[mod_num], marker=marker_styles[1])
-
-            ax_output.plot([0], [0], c=colors[-1], label='Estimated mean')
-            line_mean_estimates = ax_output.plot([global_counter], [output], c=colors[-1], marker=marker_styles[1])[0]
-            fig_output.legend()
             output_widget = fig_output.canvas
+
+            def reset_fig_outputs():
+                ax_output.clear()
+                fig_output.suptitle('Outputs and estimated statistics')
+                fig_output.canvas.header_visible = False
+                fig_output.set_figwidth(fig_width)
+                fig_output.set_figheight(fig_height)
+                fig_output.tight_layout()
+                fig_output.legends = []
+                for k, name in enumerate(model_names):
+                    ax_output.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
+                ax_output.scatter([], [], c=colors[mod_num], marker=marker_styles[1])
+                ax_output.plot([0], [0], c=colors[-1], label='Estimated mean')
+                global line_mean_estimates
+                line_mean_estimates = ax_output.plot([global_counter], [output], c=colors[-1],
+                                                     marker=marker_styles[1])[0]
+                fig_output.legend()
+                output_widget.draw()
+
+            list_of_reset_functions.append(reset_fig_outputs)
 
             button_start_monte_carlo = Button(description='Start', disabled=False)
             button_stop_monte_carlo = Button(description='Stop', disabled=True)
@@ -582,50 +641,59 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         optimization_running = False
 
         fig_objective_functional_value, ax_objective_functional_value = plt.subplots(1, 1)
-        fig_objective_functional_value.suptitle('Objective function value')
-        fig_objective_functional_value.canvas.header_visible = False
-        #fig_objective_functional_value.canvas.layout.width = '50%'
-        #fig_objective_functional_value.canvas.layout.flex = '1 0 320px'
-        fig_objective_functional_value.set_figwidth(fig_width)
-        fig_objective_functional_value.set_figheight(fig_height)
-        fig_objective_functional_value.tight_layout()
-        ax_objective_functional_value.set_yscale('log')
-        ax_objective_functional_value.set_xlabel('Optimization step')
         objective_function_value_widget = fig_objective_functional_value.canvas
+
+        def reset_fig_objective_function_value():
+            ax_objective_functional_value.clear()
+            fig_objective_functional_value.suptitle('Objective function value')
+            fig_objective_functional_value.canvas.header_visible = False
+            fig_objective_functional_value.set_figwidth(fig_width)
+            fig_objective_functional_value.set_figheight(fig_height)
+            fig_objective_functional_value.tight_layout()
+            fig_objective_functional_value.legends = []
+            ax_objective_functional_value.set_yscale('symlog', linthresh=10**(-8))
+            ax_objective_functional_value.set_xlabel('Optimization step')
+            objective_function_value_widget.draw()
+
+        list_of_reset_functions.append(reset_fig_objective_function_value)
+
         if model_hierarchy.parameters.dim == 2:
             fig_current_optimization_parameter, ax_current_optimization_parameter = plt.subplots(1, 1)
-            fig_current_optimization_parameter.suptitle('Trajectory in parameter space')
-            fig_current_optimization_parameter.canvas.header_visible = False
-            #fig_current_optimization_parameter.canvas.layout.width = '50%'
-            #fig_current_optimization_parameter.canvas.layout.flex = '1 0 320px'
-            fig_current_optimization_parameter.set_figwidth(fig_width)
-            fig_current_optimization_parameter.set_figheight(fig_height)
-            fig_current_optimization_parameter.tight_layout()
-
-            parameter_bounds = []
-            for kk in parameter_space.ranges:
-                for jj in range(parameter_space.parameters[kk]):
-                    parameter_bounds.append((parameter_space.ranges[kk][0], parameter_space.ranges[kk][1]))
-            assert len(parameter_bounds) == 2
-
+            current_optimization_parameter_widget = fig_current_optimization_parameter.canvas
             if optimization_bg_image:
-                bg_img = plt.imread(optimization_bg_image)
-                ax_current_optimization_parameter.imshow(bg_img, extent=[parameter_bounds[0][0], parameter_bounds[0][1],
-                                                                         parameter_bounds[1][0], parameter_bounds[1][1]])
                 if optimization_bg_image_limits is not None:
                     colormap = plt.cm.get_cmap('viridis')
                     sm = plt.cm.ScalarMappable(cmap=colormap)
                     sm.set_clim(vmin=optimization_bg_image_limits[0], vmax=optimization_bg_image_limits[1])
                     fig_current_optimization_parameter.colorbar(sm, ax=ax_current_optimization_parameter)
 
-            if optimal_parameter:
-                ax_current_optimization_parameter.scatter([optimal_parameter.to_numpy()[0]],
-                                                          [optimal_parameter.to_numpy()[1]],
-                                                          c="red", marker="x", label="Optimum")
-            fig_current_optimization_parameter.legend()
-            ax_current_optimization_parameter.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
-            ax_current_optimization_parameter.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
-            current_optimization_parameter_widget = fig_current_optimization_parameter.canvas
+            def reset_fig_current_optimization_parameter():
+                ax_current_optimization_parameter.clear()
+                fig_current_optimization_parameter.suptitle('Trajectory in parameter space')
+                fig_current_optimization_parameter.canvas.header_visible = False
+                fig_current_optimization_parameter.set_figwidth(fig_width)
+                fig_current_optimization_parameter.set_figheight(fig_height)
+                fig_current_optimization_parameter.tight_layout()
+                fig_current_optimization_parameter.legends = []
+
+                assert len(parameter_bounds) == 2
+
+                if optimization_bg_image:
+                    bg_img = plt.imread(optimization_bg_image)
+                    ax_current_optimization_parameter.imshow(bg_img,
+                                                             extent=[parameter_bounds[0][0], parameter_bounds[0][1],
+                                                                     parameter_bounds[1][0], parameter_bounds[1][1]])
+
+                if optimal_parameter:
+                    ax_current_optimization_parameter.scatter([optimal_parameter.to_numpy()[0]],
+                                                              [optimal_parameter.to_numpy()[1]],
+                                                              c="red", marker="x", label="Optimum")
+                fig_current_optimization_parameter.legend()
+                ax_current_optimization_parameter.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
+                ax_current_optimization_parameter.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
+                current_optimization_parameter_widget.draw()
+
+            list_of_reset_functions.append(reset_fig_current_optimization_parameter)
 
         scenarios.append(VBox([HBox([button_initialization_optimization, button_start_optimization,
                                      button_stop_optimization]),
@@ -692,10 +760,6 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         global optimization_interrupted
         optimization_interrupted = False
 
-        parameter_bounds = []
-        for kk in parameter_space.ranges:
-            for jj in range(parameter_space.parameters[kk]):
-                parameter_bounds.append((parameter_space.ranges[kk][0], parameter_space.ranges[kk][1]))
         parameter_bounds = np.array(tuple(np.array(b) for b in parameter_bounds))
 
         def run_optimization():
@@ -721,24 +785,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             optimization_iterations = 0
 
             if initial_parameter:
-                ax_current_optimization_parameter.clear()
-                if optimization_bg_image:
-                    bg_img = plt.imread(optimization_bg_image)
-                    ax_current_optimization_parameter.imshow(bg_img, extent=[parameter_bounds[0][0], parameter_bounds[0][1],
-                                                                             parameter_bounds[1][0], parameter_bounds[1][1]])
-
-                if optimal_parameter:
-                    ax_current_optimization_parameter.scatter([optimal_parameter.to_numpy()[0]],
-                                                              [optimal_parameter.to_numpy()[1]],
-                                                              c="red", marker="x", label="Optimum")
-                ax_current_optimization_parameter.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
-                ax_current_optimization_parameter.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
-                current_optimization_parameter_widget.draw()
-
-                ax_objective_functional_value.clear()
-                ax_objective_functional_value.set_yscale('log')
-                ax_objective_functional_value.set_xlabel('Optimization step')
-                objective_function_value_widget.draw()
+                reset_fig_current_optimization_parameter()
+                reset_fig_objective_function_value()
 
                 global initial_guess
                 initial_guess = initial_parameter.to_numpy()
@@ -795,6 +843,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     left_pane.layout.width = '50%'
     widget = HBox([left_pane, right_pane])
     widget.layout.grid_gap = '2%'
+
+    do_reset(None)
 
     def do_parameter_update(mu, s_out):
         global global_counter
@@ -855,8 +905,11 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                                     max(high, np.max(arr_err_ests[arr_err_ests != np.array(None)]) * 1.1,
                                         model_hierarchy.get_tolerance() * 1.1))
 
+        global inputs_to_tolerances
         inputs_to_tolerances.append(global_counter)
+        global tolerances
         tolerances.append(model_hierarchy.get_tolerance())
+        global line_tolerances
         line_tolerances.set_data(np.array(inputs_to_tolerances), np.array(tolerances))
         error_estimates_widget.draw()
 
@@ -920,6 +973,6 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
     return widget
 
-
     # TODO: Mention current status (solving, training, estimating, etc.) somewhere
-    # TODO: If 2d parameter space: non-uniform density for parameter selection in Monte Carlo and visualization of the density
+    # TODO: If 2d parameter space: non-uniform density for parameter selection
+    # in Monte Carlo and visualization of the density

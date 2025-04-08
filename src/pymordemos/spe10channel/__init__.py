@@ -85,8 +85,6 @@ class ConvertedVisualizer():#ImmutableObject):
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(1, 1)
         fig.canvas.header_visible = False
-        #fig_objective_functional_value.canvas.layout.width = '50%'
-        #fig.canvas.layout.flex = '1 0 320px'
         fig.set_figwidth(fig_width)
         fig.set_figheight(fig_height)
         im = ax.imshow(v.reshape(self.num_grid_elements[1]+1, self.num_grid_elements[0]+1))
@@ -101,6 +99,9 @@ class ConvertedVisualizer():#ImmutableObject):
         v = v.reshape(self.num_grid_elements[1]+1, self.num_grid_elements[0]+1)
         v = np.array(np.flip(v, 0))
         self.im.set_data(v)
+
+    def reset(self):
+        self.im.set_data([[]])
 
 def to_numpy(obj, **kwargs):
     if isinstance(obj, (DuneXTMatrixOperator, VectorArrayOperator)):

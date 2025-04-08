@@ -350,8 +350,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     # Tolerance
     high = 0
     low = -6
-    tolerance_slider = FloatLogSlider(value=10**((low+high)/2), min=low, max=high, description='Tolerance:')
+    tolerance_slider = FloatLogSlider(value=10**((low+high)/2), min=low, max=high, description='Choose tolerance:', style={'description_width': 'initial'}, layout={'width': '600px'})
     tolerance_update_button = Button(description='Update', disabled=False)
+    tolerance_label = Label('Current tolerance: ', layout={'margin': '0px 0px 0px 50px'})
+    current_tol_label = Label('', layout={'margin': '0px 0px 0px 5px'})
 
     global num_tols
     global tols
@@ -372,12 +374,13 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         global tols
         tols.append(tol)
         model_hierarchy.set_tolerance(tol)
+        current_tol_label.value = f'{tol:.3e}'
 
     do_tolerance_update(None)
 
     tolerance_update_button.on_click(do_tolerance_update)
     left_pane.append(Accordion(titles=['Tolerance'],
-                               children=[HBox([tolerance_slider, tolerance_update_button])],
+                               children=[HBox([tolerance_slider, tolerance_update_button, tolerance_label, current_tol_label])],
                                selected_index=0))
 
     # Parameter selector

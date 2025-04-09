@@ -350,22 +350,14 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     # Tolerance
     high = 0
     low = -6
-    tolerance_slider = FloatLogSlider(value=10**((low+high)/2), min=low, max=high, description='Choose tolerance:', style={'description_width': 'initial'}, layout={'width': '600px'})
+    tolerance_slider = FloatLogSlider(value=10**((low+high)/2), min=low, max=high, description='Choose tolerance:',
+                                      style={'description_width': 'initial'}, layout={'width': '600px'})
     tolerance_update_button = Button(description='Update', disabled=False)
     tolerance_label = Label('Current tolerance: ', layout={'margin': '0px 0px 0px 50px'})
     current_tol_label = Label('', layout={'margin': '0px 0px 0px 5px'})
 
     global num_tols
     global tols
-
-    def reset_tols():
-        global num_tols
-        num_tols = -1
-        global tols
-        tols = []
-
-    reset_tols()
-    list_of_reset_functions.append(reset_tols)
 
     def do_tolerance_update(_):
         tol = tolerance_slider.value
@@ -376,11 +368,20 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         model_hierarchy.set_tolerance(tol)
         current_tol_label.value = f'{tol:.3e}'
 
-    do_tolerance_update(None)
+    def reset_tols():
+        global num_tols
+        num_tols = -1
+        global tols
+        tols = []
+        do_tolerance_update(None)
+
+    reset_tols()
+    list_of_reset_functions.append(reset_tols)
 
     tolerance_update_button.on_click(do_tolerance_update)
     left_pane.append(Accordion(titles=['Tolerance'],
-                               children=[HBox([tolerance_slider, tolerance_update_button, tolerance_label, current_tol_label])],
+                               children=[HBox([tolerance_slider, tolerance_update_button,
+                                               tolerance_label, current_tol_label])],
                                selected_index=0))
 
     # Parameter selector
@@ -677,7 +678,6 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 fig_current_optimization_parameter.set_figwidth(fig_width)
                 fig_current_optimization_parameter.set_figheight(fig_height)
                 fig_current_optimization_parameter.tight_layout()
-                fig_current_optimization_parameter.legends = []
 
                 assert len(parameter_bounds) == 2
 
@@ -690,10 +690,12 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 if optimal_parameter:
                     ax_current_optimization_parameter.scatter([optimal_parameter.to_numpy()[0]],
                                                               [optimal_parameter.to_numpy()[1]],
-                                                              c="red", marker="x", label="Optimum")
-                fig_current_optimization_parameter.legend()
+                                                              c='red', marker='x', label=f'Optimum {optimal_parameter}')
+                ax_current_optimization_parameter.legend(framealpha=1)
                 ax_current_optimization_parameter.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
                 ax_current_optimization_parameter.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
+                ax_current_optimization_parameter.set_xlabel(str(list(model_hierarchy.parameters.keys())[0]))
+                ax_current_optimization_parameter.set_ylabel(str(list(model_hierarchy.parameters.keys())[1]))
                 current_optimization_parameter_widget.draw()
 
             list_of_reset_functions.append(reset_fig_current_optimization_parameter)
@@ -788,7 +790,12 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             optimization_iterations = 0
 
             if initial_parameter:
-                reset_fig_current_optimization_parameter()
+                if model_hierarchy.parameters.dim == 2:
+                    reset_fig_current_optimization_parameter()
+                    ax_current_optimization_parameter.scatter([initial_parameter.to_numpy()[0]],
+                                                              [initial_parameter.to_numpy()[1]],
+                                                              c='black', marker='x',
+                                                              label=f'Initial guess {initial_parameter}')
                 reset_fig_objective_function_value()
 
                 global initial_guess
@@ -948,17 +955,18 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
                     if model_hierarchy.parameters.dim == 2:
                         ax_current_optimization_parameter.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]],
-                                                                  c=colors[num_tols], label=f"Tol: {tols[-1]:.3e}")
+                                                                  marker='.', c=colors[num_tols],
+                                                                  label=f"Tolerance: {tols[-1]:.3e}")
                         handles, labels = ax_current_optimization_parameter.get_legend_handles_labels()
                         by_label = dict(zip(labels, handles))
-                        fig_current_optimization_parameter.legend(by_label.values(), by_label.keys())
+                        ax_current_optimization_parameter.legend(by_label.values(), by_label.keys(), framealpha=1)
                         current_optimization_parameter_widget.draw()
 
                     ax_objective_functional_value.scatter([optimization_iterations], [quantity_of_interest],
-                                                          c=colors[num_tols], label=f"Tol: {tols[-1]:.3e}")
+                                                          c=colors[num_tols], label=f"Tolerance: {tols[-1]:.3e}")
                     handles, labels = ax_objective_functional_value.get_legend_handles_labels()
                     by_label = dict(zip(labels, handles))
-                    fig_objective_functional_value.legend(by_label.values(), by_label.keys())
+                    ax_objective_functional_value.legend(by_label.values(), by_label.keys())
                     low, high = ax_objective_functional_value.get_ylim()
                     ax_objective_functional_value.set_ylim(min(low, quantity_of_interest * 0.9),
                                                            max(high, quantity_of_interest * 1.1))

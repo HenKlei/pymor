@@ -25,12 +25,14 @@ from ipywidgets import (
     FloatLogSlider,
     FloatSlider,
     HBox,
+    HTML,
     IntSlider,
     Label,
     Layout,
     link,
     Output,
     Play,
+    RadioButtons,
     Stack,
     Text,
     VBox,
@@ -348,29 +350,33 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                                 children=[reset_button], selected_index=0))
 
     # Tolerance
-    high = 0
-    low = -6
-    tolerance_slider = FloatLogSlider(value=10**((low+high)/2), min=low, max=high, description='Choose tolerance:',
-                                      style={'description_width': 'initial'}, layout={'width': '600px'})
+    available_tolerances = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.]
+    tolerance_radio_buttons = RadioButtons(options=[(f'{t:.0e}', t) for t in available_tolerances],
+                                           value=available_tolerances[len(available_tolerances)//2])
+    radio_buttons_style = HTML(
+        '<style>.widget-radio {width: auto;}.widget-radio-box {flex-direction: row !important; float: inline-end;}.widget-radio-box'
+        ' label {margin: 5px !important;}.widget-radio-box input {margin-left: 5px;}</style>',
+        layout=Layout(display='none'),
+    )
     tolerance_update_button = Button(description='Update', disabled=False)
     tolerance_label = Label('Current tolerance: ', layout={'margin': '0px 0px 0px 50px'})
     current_tol_label = Label('', layout={'margin': '0px 0px 0px 5px'})
 
-    global num_tols
+    global num_tol
     global tols
 
     def do_tolerance_update(_):
-        tol = tolerance_slider.value
-        global num_tols
-        num_tols += 1
+        tol = tolerance_radio_buttons.value
+        global num_tol
+        num_tol = available_tolerances.index(tol)
         global tols
         tols.append(tol)
         model_hierarchy.set_tolerance(tol)
         current_tol_label.value = f'{tol:.3e}'
 
     def reset_tols():
-        global num_tols
-        num_tols = -1
+        global num_tol
+        num_tol = -1
         global tols
         tols = []
         do_tolerance_update(None)
@@ -380,8 +386,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
     tolerance_update_button.on_click(do_tolerance_update)
     left_pane.append(Accordion(titles=['Tolerance'],
-                               children=[HBox([tolerance_slider, tolerance_update_button,
-                                               tolerance_label, current_tol_label])],
+                               children=[HBox([Label('Choose tolerance:'), tolerance_radio_buttons, radio_buttons_style,
+                                               tolerance_update_button, tolerance_label, current_tol_label])],
                                selected_index=0))
 
     # Parameter selector
@@ -953,9 +959,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     current_objective_function_value.value = str(quantity_of_interest)
                     current_optimization_parameter.value = str(mu.to_numpy())
 
+                    global num_tol
                     if model_hierarchy.parameters.dim == 2:
                         ax_current_optimization_parameter.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]],
-                                                                  marker='.', c=colors[num_tols],
+                                                                  marker='.', c=colors[num_tol],
                                                                   label=f"Tolerance: {tols[-1]:.3e}")
                         handles, labels = ax_current_optimization_parameter.get_legend_handles_labels()
                         by_label = dict(zip(labels, handles))
@@ -963,7 +970,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                         current_optimization_parameter_widget.draw()
 
                     ax_objective_functional_value.scatter([optimization_iterations], [quantity_of_interest],
-                                                          c=colors[num_tols], label=f"Tolerance: {tols[-1]:.3e}")
+                                                          c=colors[num_tol], label=f"Tolerance: {tols[-1]:.3e}")
                     handles, labels = ax_objective_functional_value.get_legend_handles_labels()
                     by_label = dict(zip(labels, handles))
                     ax_objective_functional_value.legend(by_label.values(), by_label.keys())

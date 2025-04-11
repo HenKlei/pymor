@@ -84,7 +84,12 @@ class AdaptiveModelHierarchy(Model):
                     data['model_number'] = model_number
                     if i > 0:
                         self.len_previous_training_data[i-1] = len(self.training_data[i-1])
-                        self.training_data[i-1].append((mu, sol))
+                        if len(sol) > 1:
+                            import numpy as np
+                            for t, u in zip(np.linspace(0., self.models[-1].T, len(sol)), sol):
+                                self.training_data[i-1].append((mu.with_(t=t), u))
+                        else:
+                            self.training_data[i-1].append((mu, sol))
                     quantities.remove('solution')
                     if 'solution_error_estimate' in quantities:
                         if est_err == -1:
@@ -124,7 +129,11 @@ class AdaptiveModelHierarchy(Model):
             data['output'] = sol_data['output']
             if model_number > 0:
                 self.len_previous_training_data[model_number-1] = len(self.training_data[model_number-1])
-                self.training_data[model_number-1].append((mu, sol_data['solution']))
+                if len(sol_data['solution']) > 1:
+                    for t, u in zip(np.linspace(0., self.models[-1].T, len(sol_data['solution'])), sol_data['solution']):
+                        self.training_data[model_number-1].append((mu.with_(t=t), u))
+                else:
+                    self.training_data[model_number-1].append((mu, sol_data['solution']))
             self.runtimes[model_number] += runtime
             data['runtimes'][model_number] += runtime
             quantities.remove('output')

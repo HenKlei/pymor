@@ -231,7 +231,7 @@ class NeuralNetworkInstationaryModel(BaseNeuralNetworkModel):
 
     def __init__(self, T, nt, neural_network, parameters={}, scaling_parameters={},
                  output_functional=None, products=None, error_estimator=None,
-                 visualizer=None, name=None):
+                 visualizer=None, name=None, time_stepper=None):
 
         super().__init__(products=products, error_estimator=error_estimator,
                          visualizer=visualizer, name=name)

@@ -614,7 +614,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         data_dict = {translate('Number of evaluations'): model_hierarchy.num_successful_calls,
                      translate('Average runtime'): np.array(model_hierarchy.runtimes) / temp,
                      translate('Training time'): model_hierarchy.training_times,
-                     translate('Dimension of model'): [mod.solution_space.dim for mod in model_hierarchy.models]}
+                     translate('Dimension of model'): [mod.solution_space.dim if mod is not None else 0 for mod in model_hierarchy.models]}
         statistics_table = pd.DataFrame(data=data_dict, index=model_names)
         s_out.outputs = ()
         s_out.append_display_data(statistics_table)

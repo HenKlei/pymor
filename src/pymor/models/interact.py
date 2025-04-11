@@ -292,7 +292,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                              objective_function=None, initial_parameter=None, optimal_parameter=None,
                              optimization_bg_image=None, optimization_bg_image_limits=None, show_solution=True,
                              visualizer=None, optimization_method='Nelder-Mead', optimization_options={},
-                             fig_width=17, fig_height=3):
+                             fig_width=17, fig_height=3, language='en'):
     """Interactively explore |Model| in jupyter environment.
 
     This method dynamically creates a set of `ipywidgets` to interactively visualize
@@ -317,6 +317,49 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     -------
     The created widgets as a single `ipywidget`.
     """
+    translations = {'Reset': {'de': 'Zurücksetzen'},
+                    'Reset all plots (retain model hierarchy)': {'de': 'Alle Diagramme zurücksetzen (Modellhierarchie beibehalten)'},
+                    'Update': {'de': 'Aktualisieren'},
+                    'Current tolerance': {'de': 'Aktuelle Toleranz'},
+                    'Tolerance': {'de': 'Toleranz'},
+                    'Choose tolerance': {'de': 'Wähle Toleranz'},
+                    'Manual parameter selection': {'de': 'Manuelle Parameterwahl'},
+                    'Selection from parameter space': {'de': 'Auswahl im Parameterraum'},
+                    'Error estimates': {'de': 'Fehlerschätzungen'},
+                    'Evaluation times': {'de': 'Auswertungszeiten'},
+                    'Training times': {'de': 'Trainingzeiten'},
+                    'Evaluation statistics': {'de': 'Statistiken'},
+                    'Solution': {'de': 'Lösung'},
+                    'Timings': {'de': 'Laufzeiten'},
+                    'Parameter optimization': {'de': 'Parameteroptimierung'},
+                    'evaluation': {'de': 'Auswertung'},
+                    'training': {'de': 'Training'},
+                    'Outputs and estimated statistics': {'de': 'Ausgabewert und geschätzte Statistiken'},
+                    'Estimated mean': {'de': 'Geschätzter Mittelwert'},
+                    'Start': {'de': 'Start'},
+                    'Stop': {'de': 'Stop'},
+                    'Number of samples': {'de': 'Stichprobengröße'},
+                    'Current estimated mean': {'de': 'Aktuell geschätzter Mittelwert'},
+                    'Current estimated variance': {'de': 'Aktuell geschätzte Varianz'},
+                    'Monte Carlo estimation': {'de': 'Monte Carlo Schätzung'},
+                    'Initialization': {'de': 'Initialisierung'},
+                    'Objective function value': {'de': 'Zielfunktionswert'},
+                    'Current parameter': {'de': 'Aktueller Parameter'},
+                    'Optimization step': {'de': 'Optimierungsschritt'},
+                    'Trajectory in parameter space': {'de': 'Trajektorie im Parameterraum'},
+                    'Optimum': {'de': 'Optimum'},
+                    'Application scenarios': {'de': 'Anwendungsszenario'},
+                    'Initial guess': {'de': 'Startpunkt der Optimierung'},
+                    'Running': {'de': 'Aktuell'},
+                    'Number of evaluations': {'de': 'Anzahl der Auswertungen'},
+                    'Average runtime': {'de': 'Durchschnittliche Laufzeit'},
+                    'Training time': {'de': 'Trainingszeit'},
+                    'Dimension of model': {'de': 'Dimension des Modells'}}
+
+    def translate(phrase):
+        return (translations.get(phrase, {language: phrase})).get(language, phrase)
+
+
     from IPython import get_ipython
     from matplotlib import pyplot as plt
     get_ipython().run_line_magic('matplotlib', 'ipympl')
@@ -338,7 +381,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     left_pane = []
 
     # Reset button
-    reset_button = Button(description='Reset', disabled=False,
+    reset_button = Button(description=translate('Reset'), disabled=False,
                           layout=Layout(width='250px', height='50px'), button_style='warning')
 
     def do_reset(_):
@@ -346,7 +389,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             f()
 
     reset_button.on_click(do_reset)
-    right_pane.append(Accordion(titles=['Reset all plots (retain model hierarchy)'],
+    right_pane.append(Accordion(titles=[translate('Reset all plots (retain model hierarchy)')],
                                 children=[reset_button], selected_index=0))
 
     # Tolerance
@@ -358,8 +401,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         ' label {margin: 5px !important;}.widget-radio-box input {margin-left: 5px;}</style>',
         layout=Layout(display='none'),
     )
-    tolerance_update_button = Button(description='Update', disabled=False)
-    tolerance_label = Label('Current tolerance: ', layout={'margin': '0px 0px 0px 50px'})
+    tolerance_update_button = Button(description=translate('Update'), disabled=False)
+    tolerance_label = Label(f'{translate("Current tolerance")}: ', layout={'margin': '0px 0px 0px 50px'})
     current_tol_label = Label('', layout={'margin': '0px 0px 0px 5px'})
 
     global num_tol
@@ -385,20 +428,21 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     list_of_reset_functions.append(reset_tols)
 
     tolerance_update_button.on_click(do_tolerance_update)
-    left_pane.append(Accordion(titles=['Tolerance'],
-                               children=[HBox([Label('Choose tolerance:'), tolerance_radio_buttons, radio_buttons_style,
+    left_pane.append(Accordion(titles=[translate('Tolerance')],
+                               children=[HBox([Label(f'{translate("Choose tolerance")}:'),
+                                               tolerance_radio_buttons, radio_buttons_style,
                                                tolerance_update_button, tolerance_label, current_tol_label])],
                                selected_index=0))
 
     # Parameter selector
     parameter_selector = ParameterSelector(parameter_space, time_dependent=not isinstance(model_hierarchy,
                                                                                           StationaryModel))
-    parameter_title = 'Manual parameter selection'
+    parameter_title = translate('Manual parameter selection')
     parameter_widget = parameter_selector.widget
 
     if model_hierarchy.parameters.dim == 2:
         fig_parameter_selection_onclick, ax_parameter_selection_onclick = plt.subplots(1, 1)
-        fig_parameter_selection_onclick.suptitle('Selection from parameter space')
+        fig_parameter_selection_onclick.suptitle(translate('Selection from parameter space'))
         fig_parameter_selection_onclick.canvas.header_visible = False
         parameter_widget = fig_parameter_selection_onclick.canvas
 
@@ -493,12 +537,12 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
         list_of_reset_functions.append(reset_solution_visualization)
 
-        left_pane.append(Accordion(titles=['Solution'], children=visualizer_children, selected_index=0))
+        left_pane.append(Accordion(titles=[translate('Solution')], children=visualizer_children, selected_index=0))
 
     # Error estimates
     fig_error_estimates, ax_error_estimates = plt.subplots(1, 1)
     error_estimates_widget = fig_error_estimates.canvas
-    error_estimates_accordion = Accordion(titles=['Error estimates'], children=[error_estimates_widget],
+    error_estimates_accordion = Accordion(titles=[translate('Error estimates')], children=[error_estimates_widget],
                                           selected_index=0)
 
     global line_tolerances
@@ -525,7 +569,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         global tolerances
         tolerances = []
         global line_tolerances
-        line_tolerances = ax_error_estimates.plot(inputs_to_tolerances, tolerances, c=colors[-1], label='Tolerance')[0]
+        line_tolerances = ax_error_estimates.plot(inputs_to_tolerances, tolerances, c=colors[-1], label=translate('Tolerance'))[0]
         fig_error_estimates.legend()
         ax_error_estimates.set_yscale('symlog', linthresh=10**(-8))
         error_estimates_widget.draw()
@@ -541,25 +585,25 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     def reset_fig_timings():
         ax_timings[0].clear()
         ax_timings[1].clear()
-        ax_timings[0].set_title('Evaluation times')
-        ax_timings[1].set_title('Training times')
+        ax_timings[0].set_title(translate('Evaluation times'))
+        ax_timings[1].set_title(translate('Training times'))
         fig_timings.canvas.header_visible = False
         fig_timings.set_figwidth(fig_width)
         fig_timings.set_figheight(fig_height)
         fig_timings.tight_layout()
         fig_timings.legends = []
         for k, name in enumerate(model_names):
-            ax_timings[0].bar([0], [0], color=colors[k], edgecolor='black', label=f'{name} evaluation', width=0)
+            ax_timings[0].bar([0], [0], color=colors[k], edgecolor='black', label=f'{name} {translate("evaluation")}', width=0)
         for k, name in enumerate(model_names[:-1]):
             ax_timings[1].bar([0], [0], color=colors[k], edgecolor='black', hatch='//',
-                              label=f'{name} training', width=0)
+                              label=f'{name} {translate("training")}', width=0)
         ax_timings[0].set_yscale('symlog')
         fig_timings.legend()
         timings_widget.draw()
 
     list_of_reset_functions.append(reset_fig_timings)
 
-    left_pane.append(Accordion(titles=['Timings'], children=[timings_widget], selected_index=0))
+    left_pane.append(Accordion(titles=[translate('Timings')], children=[timings_widget], selected_index=0))
 
     # Statistics
     statistics_out = Output()
@@ -567,16 +611,16 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     def do_update_statistics(s_out):
         temp = np.array(model_hierarchy.num_successful_calls)
         temp[temp == 0] = 1.
-        data_dict = {'Number of evaluations': model_hierarchy.num_successful_calls,
-                     'Average runtime': np.array(model_hierarchy.runtimes) / temp,
-                     'Training time': model_hierarchy.training_times,
-                     'Dimensions of models': [mod.solution_space.dim for mod in model_hierarchy.models]}
+        data_dict = {translate('Number of evaluations'): model_hierarchy.num_successful_calls,
+                     translate('Average runtime'): np.array(model_hierarchy.runtimes) / temp,
+                     translate('Training time'): model_hierarchy.training_times,
+                     translate('Dimension of model'): [mod.solution_space.dim for mod in model_hierarchy.models]}
         statistics_table = pd.DataFrame(data=data_dict, index=model_names)
         s_out.outputs = ()
         s_out.append_display_data(statistics_table)
 
     do_update_statistics(statistics_out)
-    left_pane.append(Accordion(titles=['Evaluation statistics'], children=[statistics_out], selected_index=0))
+    left_pane.append(Accordion(titles=[translate('Evaluation statistics')], children=[statistics_out], selected_index=0))
 
     # Scenarios
     scenarios = [parameter_widget]
@@ -598,7 +642,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
             def reset_fig_outputs():
                 ax_output.clear()
-                fig_output.suptitle('Outputs and estimated statistics')
+                fig_output.suptitle(translate('Outputs and estimated statistics'))
                 fig_output.canvas.header_visible = False
                 fig_output.set_figwidth(fig_width)
                 fig_output.set_figheight(fig_height)
@@ -607,7 +651,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 for k, name in enumerate(model_names):
                     ax_output.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
                 ax_output.scatter([], [], c=colors[mod_num], marker=marker_styles[1])
-                ax_output.plot([0], [0], c=colors[-1], label='Estimated mean')
+                ax_output.plot([0], [0], c=colors[-1], label=translate('Estimated mean'))
                 global line_mean_estimates
                 line_mean_estimates = ax_output.plot([global_counter], [output], c=colors[-1],
                                                      marker=marker_styles[1])[0]
@@ -616,11 +660,11 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
             list_of_reset_functions.append(reset_fig_outputs)
 
-            button_start_monte_carlo = Button(description='Start', disabled=False)
-            button_stop_monte_carlo = Button(description='Stop', disabled=True)
-            label_current_number_samples = Label('Number of samples: ')
-            label_current_estimated_mean = Label('Current estimated mean: ')
-            label_current_estimated_variance = Label('Current estimated variance: ')
+            button_start_monte_carlo = Button(description=translate('Start'), disabled=False)
+            button_stop_monte_carlo = Button(description=translate('Stop'), disabled=True)
+            label_current_number_samples = Label(f'{translate("Number of samples")}: ')
+            label_current_estimated_mean = Label(f'{translate("Current estimated mean")}: ')
+            label_current_estimated_variance = Label(f'{translate("Current estimated variance")}: ')
             current_number_samples = Label('0')
             current_estimated_mean = Label('-')
             current_estimated_variance = Label('-')
@@ -633,19 +677,19 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                                    HBox([label_current_estimated_mean, current_estimated_mean]),
                                    HBox([label_current_estimated_variance, current_estimated_variance]),
                                    output_widget]))
-            scenarios_titles.append('Monte Carlo estimation')
+            scenarios_titles.append(translate('Monte Carlo estimation'))
             scenarios_numbers['monte_carlo'] = len(scenarios_numbers)
     ## Parameter optimization
     if objective_function:
         global optimization_iterations
         optimization_iterations = 0
 
-        button_initialization_optimization = Button(description='Initialization', disabled=False)
-        button_start_optimization = Button(description='Start', disabled=True)
-        button_stop_optimization = Button(description='Stop', disabled=True)
-        label_current_objective_function_value = Label('Objective function value: ')
+        button_initialization_optimization = Button(description=translate('Initialization'), disabled=False)
+        button_start_optimization = Button(description=translate('Start'), disabled=True)
+        button_stop_optimization = Button(description=translate('Stop'), disabled=True)
+        label_current_objective_function_value = Label(f'{translate("Objective function value")}: ')
         current_objective_function_value = Label('')
-        label_current_optimization_parameter = Label('Current parameter: ')
+        label_current_optimization_parameter = Label(f'{translate("Current parameter")}: ')
         current_optimization_parameter = Label('')
         global optimization_running
         optimization_running = False
@@ -655,14 +699,14 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
         def reset_fig_objective_function_value():
             ax_objective_functional_value.clear()
-            fig_objective_functional_value.suptitle('Objective function value')
+            fig_objective_functional_value.suptitle(translate('Objective function value'))
             fig_objective_functional_value.canvas.header_visible = False
             fig_objective_functional_value.set_figwidth(fig_width)
             fig_objective_functional_value.set_figheight(fig_height)
             fig_objective_functional_value.tight_layout()
             fig_objective_functional_value.legends = []
             ax_objective_functional_value.set_yscale('symlog', linthresh=10**(-8))
-            ax_objective_functional_value.set_xlabel('Optimization step')
+            ax_objective_functional_value.set_xlabel(translate('Optimization step'))
             objective_function_value_widget.draw()
 
         list_of_reset_functions.append(reset_fig_objective_function_value)
@@ -679,7 +723,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
             def reset_fig_current_optimization_parameter():
                 ax_current_optimization_parameter.clear()
-                fig_current_optimization_parameter.suptitle('Trajectory in parameter space')
+                fig_current_optimization_parameter.suptitle(translate('Trajectory in parameter space'))
                 fig_current_optimization_parameter.canvas.header_visible = False
                 fig_current_optimization_parameter.set_figwidth(fig_width)
                 fig_current_optimization_parameter.set_figheight(fig_height)
@@ -696,7 +740,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 if optimal_parameter:
                     ax_current_optimization_parameter.scatter([optimal_parameter.to_numpy()[0]],
                                                               [optimal_parameter.to_numpy()[1]],
-                                                              c='red', marker='x', label=f'Optimum {optimal_parameter}')
+                                                              c='red', marker='x', label=f'{translate("Optimum")} {optimal_parameter}')
                 ax_current_optimization_parameter.legend(framealpha=1)
                 ax_current_optimization_parameter.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
                 ax_current_optimization_parameter.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
@@ -712,10 +756,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                                HBox([label_current_optimization_parameter, current_optimization_parameter]),
                                objective_function_value_widget,
                                current_optimization_parameter_widget]))
-        scenarios_titles.append('Parameter optimization')
+        scenarios_titles.append(translate('Parameter optimization'))
         scenarios_numbers['parameter_optimization'] = len(scenarios_numbers)
 
-    scenarios_accordion = Accordion(titles=['Application scenarios'],
+    scenarios_accordion = Accordion(titles=[translate('Application scenarios')],
                                     children=[Accordion(titles=scenarios_titles,
                                                         children=scenarios, selected_index=0)],
                                     selected_index=0)
@@ -737,7 +781,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 button_start_optimization.disabled = True
                 button_stop_optimization.disabled = True
             scenarios_accordion.children[0].set_title(scenarios_numbers['monte_carlo'],
-                                                      'Running: Monte Carlo estimation')
+                                                      f'{translate("Running")}: {translate("Monte Carlo estimation")}')
 
             from pymor.tools.random import spawn_rng
             thread_monte_carlo = threading.Thread(target=spawn_rng(run_monte_carlo),
@@ -754,7 +798,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             if objective_function:
                 button_start_optimization.disabled = False
                 button_stop_optimization.disabled = True
-            scenarios_accordion.children[0].set_title(scenarios_numbers['monte_carlo'], 'Monte Carlo estimation')
+            scenarios_accordion.children[0].set_title(scenarios_numbers['monte_carlo'], translate('Monte Carlo estimation'))
 
         button_start_monte_carlo.on_click(do_start_monte_carlo)
         button_stop_monte_carlo.on_click(do_stop_monte_carlo)
@@ -801,7 +845,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     ax_current_optimization_parameter.scatter([initial_parameter.to_numpy()[0]],
                                                               [initial_parameter.to_numpy()[1]],
                                                               c='black', marker='x',
-                                                              label=f'Initial guess {initial_parameter}')
+                                                              label=f'{translate("Initial guess")} {initial_parameter}')
                 reset_fig_objective_function_value()
 
                 global initial_guess
@@ -826,7 +870,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 button_start_monte_carlo.disabled = True
                 button_stop_monte_carlo.disabled = True
             scenarios_accordion.children[0].set_title(scenarios_numbers['parameter_optimization'],
-                                                      'Running: Parameter optimization')
+                                                      f'{translate("Running")}: {translate("Parameter optimization")}')
 
             from pymor.tools.random import spawn_rng
             thread_optimization = threading.Thread(target=spawn_rng(run_optimization))
@@ -845,7 +889,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 button_start_monte_carlo.disabled = False
                 button_stop_monte_carlo.disabled = True
             scenarios_accordion.children[0].set_title(scenarios_numbers['parameter_optimization'],
-                                                      'Parameter optimization')
+                                                      translate('Parameter optimization'))
 
         button_initialization_optimization.on_click(do_initialization_optimization)
         button_start_optimization.on_click(do_start_optimization)
@@ -963,14 +1007,14 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     if model_hierarchy.parameters.dim == 2:
                         ax_current_optimization_parameter.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]],
                                                                   marker='.', c=colors[num_tol],
-                                                                  label=f"Tolerance: {tols[-1]:.3e}")
+                                                                  label=f'{translate("Tolerance")}: {tols[-1]:.3e}')
                         handles, labels = ax_current_optimization_parameter.get_legend_handles_labels()
                         by_label = dict(zip(labels, handles))
                         ax_current_optimization_parameter.legend(by_label.values(), by_label.keys(), framealpha=1)
                         current_optimization_parameter_widget.draw()
 
                     ax_objective_functional_value.scatter([optimization_iterations], [quantity_of_interest],
-                                                          c=colors[num_tol], label=f"Tolerance: {tols[-1]:.3e}")
+                                                          c=colors[num_tol], label=f'{translate("Tolerance")}: {tols[-1]:.3e}')
                     handles, labels = ax_objective_functional_value.get_legend_handles_labels()
                     by_label = dict(zip(labels, handles))
                     ax_objective_functional_value.legend(by_label.values(), by_label.keys())

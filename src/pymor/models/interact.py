@@ -225,7 +225,7 @@ def interact(model, parameter_space, show_solution=True, visualizer=None, transf
             from matplotlib import pyplot as plt
             get_ipython().run_line_magic('matplotlib', 'widget')
             plt.ioff()
-            fig, ax = plt.subplots(1,1)
+            fig, ax = plt.subplots(1, 1)
             fig.canvas.header_visible = False
             fig.canvas.layout.flex = '1 0 320px'
             fig.set_figwidth(320 / 100)
@@ -342,6 +342,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     'Current estimated mean': {'de': 'Aktuell geschätzter Mittelwert'},
                     'Current estimated variance': {'de': 'Aktuell geschätzte Varianz'},
                     'Monte Carlo estimation': {'de': 'Monte Carlo Schätzung'},
+                    'Samples': {'de': 'Samples'},
                     'Initialization': {'de': 'Initialisierung'},
                     'Objective function value': {'de': 'Zielfunktionswert'},
                     'Current parameter': {'de': 'Aktueller Parameter'},
@@ -574,7 +575,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         global line_tolerances
         line_tolerances = ax_error_estimates.plot(inputs_to_tolerances, tolerances, c=colors[-1],
                                                   label=translate('Tolerance'))[0]
-        fig_error_estimates.legend(framealpha=1.)
+        ax_error_estimates.legend(framealpha=1.)
         ax_error_estimates.set_yscale('symlog', linthresh=10**(-8))
         error_estimates_widget.draw()
 
@@ -644,11 +645,22 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
             mean_estimates = []
 
-            fig_output, ax_output = plt.subplots(1, 1)
+            if model_hierarchy.parameters.dim == 2:
+                fig_output, axs = plt.subplots(1, 2)
+                ax_output = axs[0]
+                ax_monte_carlo_samples = axs[1]
+            else:
+                fig_output, ax_output = plt.subplots(1, 1)
             output_widget = fig_output.canvas
 
             def reset_fig_outputs():
                 ax_output.clear()
+                if model_hierarchy.parameters.dim == 2:
+                    ax_monte_carlo_samples.clear()
+                    ax_monte_carlo_samples.scatter([], [], c=colors[-1], label=translate('Samples'))
+                    ax_monte_carlo_samples.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
+                    ax_monte_carlo_samples.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
+                    ax_monte_carlo_samples.legend(framealpha=1.)
                 fig_output.suptitle(translate('Outputs and estimated statistics'))
                 fig_output.canvas.header_visible = False
                 fig_output.set_figwidth(fig_width)
@@ -662,7 +674,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 global line_mean_estimates
                 line_mean_estimates = ax_output.plot([global_counter], [output], c=colors[-1],
                                                      marker=marker_styles[1])[0]
-                fig_output.legend(framealpha=1.)
+                ax_output.legend(framealpha=1.)
                 output_widget.draw()
 
             list_of_reset_functions.append(reset_fig_outputs)
@@ -957,6 +969,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 output = output_function(output)
             outputs.append(output)
             ax_output.scatter([global_counter], [output], c=colors[mod_num], marker=marker_styles[1])
+            if model_hierarchy.parameters.dim == 2:
+                ax_monte_carlo_samples.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]], c=colors[-1])
             low, high = ax_output.get_ylim()
             ax_output.set_ylim(min(low, output), max(high, output))
             output_widget.draw()

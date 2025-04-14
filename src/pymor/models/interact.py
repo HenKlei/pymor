@@ -292,7 +292,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                              objective_function=None, initial_parameter=None, optimal_parameter=None,
                              optimization_bg_image=None, optimization_bg_image_limits=None, show_solution=True,
                              visualizer=None, optimization_method='Nelder-Mead', optimization_options={},
-                             fig_width=17, fig_height=3, language='en'):
+                             random_sampling_function=None, density_function_monte_carlo=None,
+                             fig_width=17, fig_height=3, solution_plot_extent=(0, 1, 0, 1), language='en'):
     """Interactively explore |Model| in jupyter environment.
 
     This method dynamically creates a set of `ipywidgets` to interactively visualize
@@ -335,6 +336,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     'evaluation': {'de': 'Auswertung'},
                     'training': {'de': 'Training'},
                     'Outputs and estimated statistics': {'de': 'Ausgabewert und geschätzte Statistiken'},
+                    'Randomly selected parameters': {'de': 'Zufällig gewählte Parameter'},
+                    'Randomly selected parameters and probability density function': {'de': 'Zufällig gewählte Parameter und Wahrscheinlichkeitsdichte'},
                     'Estimated mean': {'de': 'Geschätzter Mittelwert'},
                     'Start': {'de': 'Start'},
                     'Stop': {'de': 'Stop'},
@@ -496,7 +499,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     from matplotlib import markers
     marker_styles = list(markers.MarkerStyle.markers.keys())
 
+    global outputs
     outputs = []
+    global inputs_to_outputs
     inputs_to_outputs = []
 
     # Solution
@@ -507,7 +512,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         global current_sol
         current_sol = U
         visualizer = (visualizer or model_hierarchy.visualize)
-        visualizer_widget = visualizer.visualize(U[-1], return_widget=True, fig_width=fig_width, fig_height=fig_height)
+        visualizer_widget = visualizer.visualize(U[-1], return_widget=True, fig_width=fig_width, fig_height=fig_height,
+                                                 extent=solution_plot_extent)
 
         visualizer_children = [visualizer_widget]
         if len(U) > 1:
@@ -649,6 +655,19 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 fig_output, axs = plt.subplots(1, 2)
                 ax_output = axs[0]
                 ax_monte_carlo_samples = axs[1]
+                if model_hierarchy.parameters.dim == 2:
+                    if density_function_monte_carlo:
+                        x = np.linspace(parameter_bounds[0][0], parameter_bounds[0][1], 500)
+                        y = np.linspace(parameter_bounds[1][0], parameter_bounds[1][1], 500)
+                        X, Y = np.meshgrid(x, y)
+                        pos = np.empty(X.shape + (2,))
+                        pos[:, :, 0] = X
+                        pos[:, :, 1] = Y
+                        density = density_function_monte_carlo(pos)
+                        colormap = plt.cm.get_cmap('viridis')
+                        sm = plt.cm.ScalarMappable(cmap=colormap)
+                        sm.set_clim(vmin=np.min(density), vmax=np.max(density))
+                        fig_output.colorbar(sm, ax=ax_monte_carlo_samples)
             else:
                 fig_output, ax_output = plt.subplots(1, 1)
             output_widget = fig_output.canvas
@@ -660,8 +679,16 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     ax_monte_carlo_samples.scatter([], [], c=colors[-1], label=translate('Samples'))
                     ax_monte_carlo_samples.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
                     ax_monte_carlo_samples.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
+                    if density_function_monte_carlo:
+                        ax_monte_carlo_samples.imshow(density, origin='lower', cmap='viridis', vmin=np.min(density), vmax=np.max(density),
+                                                      extent=(parameter_bounds[0][0], parameter_bounds[0][1],
+                                                              parameter_bounds[1][0], parameter_bounds[1][1]))
                     ax_monte_carlo_samples.legend(framealpha=1.)
-                fig_output.suptitle(translate('Outputs and estimated statistics'))
+                    if density_function_monte_carlo:
+                        ax_monte_carlo_samples.set_title(translate('Randomly selected parameters and probability density function'))
+                    else:
+                        ax_monte_carlo_samples.set_title(translate('Randomly selected parameters'))
+                ax_output.set_title(translate('Outputs and estimated statistics'))
                 fig_output.canvas.header_visible = False
                 fig_output.set_figwidth(fig_width)
                 fig_output.set_figheight(fig_height)
@@ -676,6 +703,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                                                      marker=marker_styles[1])[0]
                 ax_output.legend(framealpha=1.)
                 output_widget.draw()
+                global outputs
+                outputs = []
+                global inputs_to_outputs
+                inputs_to_outputs = []
 
             list_of_reset_functions.append(reset_fig_outputs)
 
@@ -793,7 +824,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         def run_monte_carlo(s_out):
             global monte_carlo_running
             while monte_carlo_running:
-                mu = parameter_space.sample_randomly()
+                if random_sampling_function is None:
+                    mu = parameter_space.sample_randomly()
+                else:
+                    mu = model_hierarchy.parameters.parse(random_sampling_function())
                 do_parameter_update(mu, s_out)
 
         def do_start_monte_carlo(_):
@@ -929,7 +963,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     left_pane.layout.width = '50%'
     general_style = HTML(
         '<style>.widget-label, .jp-Cell-outputArea label, .jp-RenderedHTMLCommon, '
-        '.jupyter-button {font-size: 1em !important;} .jp-Cell-outputArea {font-size: 2em !important;}</style>',
+        '.jupyter-button, .widget-readout {font-size: 1em !important;} .jp-Cell-outputArea {font-size: 2em !important;}'
+        '.widget-play {font-size: 17.5px !important;}</style>',
         layout=Layout(display='none'),
     )
     widget = HBox([left_pane, right_pane, general_style])
@@ -967,17 +1002,20 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             output = data['output'].ravel()
             if output_function:
                 output = output_function(output)
-            outputs.append(output)
-            ax_output.scatter([global_counter], [output], c=colors[mod_num], marker=marker_styles[1])
-            if model_hierarchy.parameters.dim == 2:
-                ax_monte_carlo_samples.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]], c=colors[-1])
-            low, high = ax_output.get_ylim()
-            ax_output.set_ylim(min(low, output), max(high, output))
-            output_widget.draw()
 
             global monte_carlo_running
             if monte_carlo_running:
+                global outputs
+                outputs.append(output)
+                ax_output.scatter([global_counter], [output], c=colors[mod_num], marker=marker_styles[1])
+                if model_hierarchy.parameters.dim == 2:
+                    ax_monte_carlo_samples.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]], c=colors[-1])
+                low, high = ax_output.get_ylim()
+                ax_output.set_ylim(min(low, output), max(high, output))
+                output_widget.draw()
+
                 current_number_samples.value = str(len(outputs))
+                global inputs_to_outputs
                 inputs_to_outputs.append(global_counter)
                 mean_estimate = np.mean(np.array(outputs), axis=0)
                 mean_estimates.append(mean_estimate)

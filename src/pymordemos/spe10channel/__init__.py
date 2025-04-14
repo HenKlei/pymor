@@ -76,7 +76,7 @@ class ConvertedVisualizer():#ImmutableObject):
         self.num_grid_elements = num_grid_elements
         #self.__auto_init(locals())
 
-    def visualize(self, U, fig_width=10, fig_height=3, *args, **kwargs):
+    def visualize(self, U, fig_width=10, fig_height=3, extent=(0, 1, 0, 1), *args, **kwargs):
         assert len(U) == 1
         v = U[0].to_numpy()
         v = v.reshape(self.num_grid_elements[1]+1, self.num_grid_elements[0]+1)
@@ -87,7 +87,7 @@ class ConvertedVisualizer():#ImmutableObject):
         fig.canvas.header_visible = False
         fig.set_figwidth(fig_width)
         fig.set_figheight(fig_height)
-        im = ax.imshow(v.reshape(self.num_grid_elements[1]+1, self.num_grid_elements[0]+1))
+        im = ax.imshow(v.reshape(self.num_grid_elements[1]+1, self.num_grid_elements[0]+1), extent=extent)
         self.im = im
         widget = fig.canvas
         return widget

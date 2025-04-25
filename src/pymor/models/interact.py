@@ -321,16 +321,16 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     translations = {'Reset': {'de': 'Zurücksetzen'},
                     'Reset all plots (retain model hierarchy)': {'de': 'Alle Diagramme zurücksetzen (Modellhierarchie beibehalten)'},
                     'Update': {'de': 'Aktualisieren'},
-                    'Current tolerance': {'de': 'Aktuelle Toleranz'},
-                    'Tolerance': {'de': 'Toleranz'},
-                    'Choose tolerance': {'de': 'Wähle Toleranz'},
+                    'Current tolerance': {'de': 'Aktuelle Rechengenauigkeit'},
+                    'Tolerance': {'de': 'Rechengenauigkeit'},
+                    'Choose tolerance': {'de': 'Wähle Rechengenauigkeit'},
                     'Manual parameter selection': {'de': 'Manuelle Parameterwahl'},
                     'Selection from parameter space': {'de': 'Auswahl im Parameterraum'},
                     'Error estimates': {'de': 'Fehlerschätzungen'},
                     'Evaluation times': {'de': 'Auswertungszeiten'},
                     'Training times': {'de': 'Trainingzeiten'},
                     'Evaluation statistics': {'de': 'Statistiken'},
-                    'Solution': {'de': 'Lösung'},
+                    'Solution': {'de': 'Konzentrationsverteilung des Schadstoffs'},
                     'Timings': {'de': 'Laufzeiten'},
                     'Parameter optimization': {'de': 'Parameteroptimierung'},
                     'evaluation': {'de': 'Auswertung'},
@@ -344,7 +344,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     'Number of samples': {'de': 'Stichprobengröße'},
                     'Current estimated mean': {'de': 'Aktuell geschätzter Mittelwert'},
                     'Current estimated variance': {'de': 'Aktuell geschätzte Varianz'},
-                    'Monte Carlo estimation': {'de': 'Monte Carlo Schätzung'},
+                    'Monte Carlo estimation': {'de': 'Abschätzung der Auswirkungen von Materialunsicherheiten'},
                     'Samples': {'de': 'Samples'},
                     'Initialization': {'de': 'Initialisierung'},
                     'Objective function value': {'de': 'Zielfunktionswert'},
@@ -353,7 +353,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     'Trajectory in parameter space': {'de': 'Trajektorie im Parameterraum'},
                     'Optimum': {'de': 'Optimum'},
                     'Application scenarios': {'de': 'Anwendungsszenario'},
-                    'Initial guess': {'de': 'Startpunkt der Optimierung'},
+                    'Initial guess': {'de': 'Startpunkt'},
                     'Running': {'de': 'Aktuell'},
                     'Number of evaluations': {'de': 'Anzahl der Auswertungen'},
                     'Average runtime': {'de': 'Durchschnittliche Laufzeit'},
@@ -408,7 +408,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         layout=Layout(display='none'),
     )
     tolerance_update_button = Button(description=translate('Update'),
-                                     layout=Layout(width='200px', height='50px'), disabled=False)
+                                     layout=Layout(width='200px'), disabled=False, button_style='primary')
     tolerance_label = Label(f'{translate("Current tolerance")}: ', layout={'margin': '0px 0px 0px 50px'})
     current_tol_label = Label('', layout={'margin': '0px 0px 0px 5px'})
 
@@ -640,8 +640,89 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     scenarios = [parameter_widget]
     scenarios_titles = [parameter_title]
     scenarios_numbers = {'manual_parameter_selection': 0}
+    ## Parameter optimization
+    if objective_function:
+        global optimization_iterations
+        optimization_iterations = 0
+
+        button_initialization_optimization = Button(description=translate('Initialization'), button_style='primary',
+                                                    layout=Layout(width='250px', height='50px'), disabled=False)
+        button_start_optimization = Button(description=translate('Start'), button_style='primary',
+                                           layout=Layout(width='100px', height='50px'), disabled=True)
+        button_stop_optimization = Button(description=translate('Stop'), button_style='primary',
+                                          layout=Layout(width='100px', height='50px'), disabled=True)
+        label_current_objective_function_value = Label(f'{translate("Objective function value")}: ')
+        current_objective_function_value = Label('')
+        label_current_optimization_parameter = Label(f'{translate("Current parameter")}: ')
+        current_optimization_parameter = Label('')
+        global optimization_running
+        optimization_running = False
+
+        if model_hierarchy.parameters.dim == 2:
+            fig_parameter_optimization, axs = plt.subplots(1, 2)
+            ax_objective_functional_value = axs[0]
+            ax_current_optimization_parameter = axs[1]
+        else:
+            fig_parameter_optimization, ax_objective_functional_value = plt.subplots(1, 1)
+        parameter_optimization_widget = fig_parameter_optimization.canvas
+
+        if model_hierarchy.parameters.dim == 2:
+            if optimization_bg_image:
+                if optimization_bg_image_limits is not None:
+                    colormap = plt.cm.get_cmap('viridis')
+                    sm = plt.cm.ScalarMappable(cmap=colormap)
+                    sm.set_clim(vmin=optimization_bg_image_limits[0], vmax=optimization_bg_image_limits[1])
+                    fig_parameter_optimization.colorbar(sm, ax=ax_current_optimization_parameter)
+
+        def reset_fig_parameter_optimization():
+            ax_objective_functional_value.clear()
+            ax_objective_functional_value.set_title(translate('Objective function value'))
+            fig_parameter_optimization.canvas.header_visible = False
+            fig_parameter_optimization.set_figwidth(fig_width)
+            fig_parameter_optimization.set_figheight(fig_height)
+            fig_parameter_optimization.tight_layout()
+            fig_parameter_optimization.legends = []
+            ax_objective_functional_value.set_xlabel(translate('Optimization step'))
+
+            if model_hierarchy.parameters.dim == 2:
+                ax_current_optimization_parameter.clear()
+                ax_current_optimization_parameter.set_title(translate('Trajectory in parameter space'))
+
+                assert len(parameter_bounds) == 2
+
+                if optimization_bg_image:
+                    bg_img = plt.imread(optimization_bg_image)
+                    ax_current_optimization_parameter.imshow(bg_img,
+                                                             extent=[parameter_bounds[0][0], parameter_bounds[0][1],
+                                                                     parameter_bounds[1][0], parameter_bounds[1][1]])
+
+                if optimal_parameter:
+                    ax_current_optimization_parameter.scatter([optimal_parameter.to_numpy()[0]],
+                                                              [optimal_parameter.to_numpy()[1]],
+                                                              c='red', marker='x',
+                                                              label=f'{translate("Optimum")} {optimal_parameter}')
+                ax_current_optimization_parameter.legend(framealpha=1.)
+                ax_current_optimization_parameter.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
+                ax_current_optimization_parameter.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
+                ax_current_optimization_parameter.set_xlabel(str(list(model_hierarchy.parameters.keys())[0]))
+                ax_current_optimization_parameter.set_ylabel(str(list(model_hierarchy.parameters.keys())[1]))
+
+            parameter_optimization_widget.draw()
+
+        list_of_reset_functions.append(reset_fig_parameter_optimization)
+
+        scenarios.append(VBox([HBox([button_initialization_optimization, button_start_optimization,
+                                     button_stop_optimization]),
+                               HBox([label_current_objective_function_value, current_objective_function_value]),
+                               HBox([label_current_optimization_parameter, current_optimization_parameter]),
+                               parameter_optimization_widget]))
+        scenarios_titles.append(translate('Parameter optimization'))
+        scenarios_numbers['parameter_optimization'] = len(scenarios_numbers)
+
     ## Monte Carlo
     output_scalar = False
+    global monte_carlo_counter
+    monte_carlo_counter = 0
     if has_output:
         output = data['output'].ravel()
         if output.shape == (1,) or output_function:
@@ -679,8 +760,11 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     ax_monte_carlo_samples.scatter([], [], c=colors[-1], label=translate('Samples'))
                     ax_monte_carlo_samples.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
                     ax_monte_carlo_samples.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
+                    ax_monte_carlo_samples.set_xlabel(str(list(model_hierarchy.parameters.keys())[0]))
+                    ax_monte_carlo_samples.set_ylabel(str(list(model_hierarchy.parameters.keys())[1]))
                     if density_function_monte_carlo:
-                        ax_monte_carlo_samples.imshow(density, origin='lower', cmap='viridis', vmin=np.min(density), vmax=np.max(density),
+                        ax_monte_carlo_samples.imshow(density, origin='lower', cmap='viridis',
+                                                      vmin=np.min(density), vmax=np.max(density),
                                                       extent=(parameter_bounds[0][0], parameter_bounds[0][1],
                                                               parameter_bounds[1][0], parameter_bounds[1][1]))
                     ax_monte_carlo_samples.legend(framealpha=1.)
@@ -699,7 +783,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 ax_output.scatter([], [], c=colors[mod_num], marker=marker_styles[1])
                 ax_output.plot([0], [0], c=colors[-1], label=translate('Estimated mean'))
                 global line_mean_estimates
-                line_mean_estimates = ax_output.plot([global_counter], [output], c=colors[-1],
+                line_mean_estimates = ax_output.plot([], [], c=colors[-1],
                                                      marker=marker_styles[1])[0]
                 ax_output.legend(framealpha=1.)
                 output_widget.draw()
@@ -707,12 +791,14 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 outputs = []
                 global inputs_to_outputs
                 inputs_to_outputs = []
+                global monte_carlo_counter
+                monte_carlo_counter = 0
 
             list_of_reset_functions.append(reset_fig_outputs)
 
-            button_start_monte_carlo = Button(description=translate('Start'),
+            button_start_monte_carlo = Button(description=translate('Start'), button_style='primary',
                                               layout=Layout(width='100px', height='50px'), disabled=False)
-            button_stop_monte_carlo = Button(description=translate('Stop'),
+            button_stop_monte_carlo = Button(description=translate('Stop'), button_style='primary',
                                              layout=Layout(width='100px', height='50px'), disabled=True)
             label_current_number_samples = Label(f'{translate("Number of samples")}: ')
             label_current_estimated_mean = Label(f'{translate("Current estimated mean")}: ')
@@ -731,89 +817,6 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                                    output_widget]))
             scenarios_titles.append(translate('Monte Carlo estimation'))
             scenarios_numbers['monte_carlo'] = len(scenarios_numbers)
-    ## Parameter optimization
-    if objective_function:
-        global optimization_iterations
-        optimization_iterations = 0
-
-        button_initialization_optimization = Button(description=translate('Initialization'),
-                                                    layout=Layout(width='250px', height='50px'), disabled=False)
-        button_start_optimization = Button(description=translate('Start'),
-                                           layout=Layout(width='100px', height='50px'), disabled=True)
-        button_stop_optimization = Button(description=translate('Stop'),
-                                          layout=Layout(width='100px', height='50px'), disabled=True)
-        label_current_objective_function_value = Label(f'{translate("Objective function value")}: ')
-        current_objective_function_value = Label('')
-        label_current_optimization_parameter = Label(f'{translate("Current parameter")}: ')
-        current_optimization_parameter = Label('')
-        global optimization_running
-        optimization_running = False
-
-        fig_objective_functional_value, ax_objective_functional_value = plt.subplots(1, 1)
-        objective_function_value_widget = fig_objective_functional_value.canvas
-
-        def reset_fig_objective_function_value():
-            ax_objective_functional_value.clear()
-            fig_objective_functional_value.suptitle(translate('Objective function value'))
-            fig_objective_functional_value.canvas.header_visible = False
-            fig_objective_functional_value.set_figwidth(fig_width)
-            fig_objective_functional_value.set_figheight(fig_height)
-            fig_objective_functional_value.tight_layout()
-            fig_objective_functional_value.legends = []
-            ax_objective_functional_value.set_yscale('symlog', linthresh=10**(-8))
-            ax_objective_functional_value.set_xlabel(translate('Optimization step'))
-            objective_function_value_widget.draw()
-
-        list_of_reset_functions.append(reset_fig_objective_function_value)
-
-        if model_hierarchy.parameters.dim == 2:
-            fig_current_optimization_parameter, ax_current_optimization_parameter = plt.subplots(1, 1)
-            current_optimization_parameter_widget = fig_current_optimization_parameter.canvas
-            if optimization_bg_image:
-                if optimization_bg_image_limits is not None:
-                    colormap = plt.cm.get_cmap('viridis')
-                    sm = plt.cm.ScalarMappable(cmap=colormap)
-                    sm.set_clim(vmin=optimization_bg_image_limits[0], vmax=optimization_bg_image_limits[1])
-                    fig_current_optimization_parameter.colorbar(sm, ax=ax_current_optimization_parameter)
-
-            def reset_fig_current_optimization_parameter():
-                ax_current_optimization_parameter.clear()
-                fig_current_optimization_parameter.suptitle(translate('Trajectory in parameter space'))
-                fig_current_optimization_parameter.canvas.header_visible = False
-                fig_current_optimization_parameter.set_figwidth(fig_width)
-                fig_current_optimization_parameter.set_figheight(fig_height)
-                fig_current_optimization_parameter.tight_layout()
-
-                assert len(parameter_bounds) == 2
-
-                if optimization_bg_image:
-                    bg_img = plt.imread(optimization_bg_image)
-                    ax_current_optimization_parameter.imshow(bg_img,
-                                                             extent=[parameter_bounds[0][0], parameter_bounds[0][1],
-                                                                     parameter_bounds[1][0], parameter_bounds[1][1]])
-
-                if optimal_parameter:
-                    ax_current_optimization_parameter.scatter([optimal_parameter.to_numpy()[0]],
-                                                              [optimal_parameter.to_numpy()[1]],
-                                                              c='red', marker='x',
-                                                              label=f'{translate("Optimum")} {optimal_parameter}')
-                ax_current_optimization_parameter.legend(framealpha=1.)
-                ax_current_optimization_parameter.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
-                ax_current_optimization_parameter.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
-                ax_current_optimization_parameter.set_xlabel(str(list(model_hierarchy.parameters.keys())[0]))
-                ax_current_optimization_parameter.set_ylabel(str(list(model_hierarchy.parameters.keys())[1]))
-                current_optimization_parameter_widget.draw()
-
-            list_of_reset_functions.append(reset_fig_current_optimization_parameter)
-
-        scenarios.append(VBox([HBox([button_initialization_optimization, button_start_optimization,
-                                     button_stop_optimization]),
-                               HBox([label_current_objective_function_value, current_objective_function_value]),
-                               HBox([label_current_optimization_parameter, current_optimization_parameter]),
-                               objective_function_value_widget,
-                               current_optimization_parameter_widget]))
-        scenarios_titles.append(translate('Parameter optimization'))
-        scenarios_numbers['parameter_optimization'] = len(scenarios_numbers)
 
     scenarios_accordion = Accordion(titles=[translate('Application scenarios')],
                                     children=[Accordion(titles=scenarios_titles,
@@ -900,13 +903,12 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             optimization_iterations = 0
 
             if initial_parameter:
+                reset_fig_parameter_optimization()
                 if model_hierarchy.parameters.dim == 2:
-                    reset_fig_current_optimization_parameter()
                     ax_current_optimization_parameter.scatter([initial_parameter.to_numpy()[0]],
                                                               [initial_parameter.to_numpy()[1]],
                                                               c='black', marker='x',
                                                               label=f'{translate("Initial guess")} {initial_parameter}')
-                reset_fig_objective_function_value()
 
                 global initial_guess
                 initial_guess = initial_parameter.to_numpy()
@@ -962,8 +964,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     left_pane = VBox(left_pane)
     left_pane.layout.width = '50%'
     general_style = HTML(
-        '<style>.widget-label, .jp-Cell-outputArea label, .jp-RenderedHTMLCommon, '
-        '.jupyter-button, .widget-readout {font-size: 1em !important;} .jp-Cell-outputArea {font-size: 2em !important;}'
+        '<style>.widget-label, .jp-Cell-outputArea label, .jp-RenderedHTMLCommon, .jupyter-button, '
+        '.widget-readout, .jp-OutputArea-output.jp-RenderedHTMLCommon table {font-size: 1em !important;}'
+        '.jp-Cell-outputArea {font-size: 1.5em !important;}'
         '.widget-play {font-size: 17.5px !important;}</style>',
         layout=Layout(display='none'),
     )
@@ -1007,7 +1010,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             if monte_carlo_running:
                 global outputs
                 outputs.append(output)
-                ax_output.scatter([global_counter], [output], c=colors[mod_num], marker=marker_styles[1])
+                global monte_carlo_counter
+                monte_carlo_counter = monte_carlo_counter + 1
+                ax_output.scatter([monte_carlo_counter], [output], c=colors[mod_num], marker=marker_styles[1])
                 if model_hierarchy.parameters.dim == 2:
                     ax_monte_carlo_samples.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]], c=colors[-1])
                 low, high = ax_output.get_ylim()
@@ -1016,7 +1021,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
                 current_number_samples.value = str(len(outputs))
                 global inputs_to_outputs
-                inputs_to_outputs.append(global_counter)
+                inputs_to_outputs.append(monte_carlo_counter)
                 mean_estimate = np.mean(np.array(outputs), axis=0)
                 mean_estimates.append(mean_estimate)
                 current_estimated_mean.value = str(np.mean(np.array(outputs), axis=0))
@@ -1082,7 +1087,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                         handles, labels = ax_current_optimization_parameter.get_legend_handles_labels()
                         by_label = dict(zip(labels, handles))
                         ax_current_optimization_parameter.legend(by_label.values(), by_label.keys(), framealpha=1.)
-                        current_optimization_parameter_widget.draw()
+                        parameter_optimization_widget.draw()
 
                     ax_objective_functional_value.scatter([optimization_iterations], [quantity_of_interest],
                                                           c=colors[num_tol],
@@ -1093,7 +1098,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     low, high = ax_objective_functional_value.get_ylim()
                     ax_objective_functional_value.set_ylim(min(low, quantity_of_interest * 0.9),
                                                            max(high, quantity_of_interest * 1.1))
-                    objective_function_value_widget.draw()
+                    parameter_optimization_widget.draw()
 
                     collected_optimization_data.append({'point': mu, 'val': quantity_of_interest})
                     return quantity_of_interest
@@ -1108,5 +1113,3 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     return widget
 
     # TODO: Mention current status (solving, training, estimating, etc.) somewhere
-    # TODO: If 2d parameter space: non-uniform density for parameter selection
-    # in Monte Carlo and visualization of the density

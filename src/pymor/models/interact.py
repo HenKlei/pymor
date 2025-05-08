@@ -447,6 +447,11 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     parameter_title = translate('Manual parameter selection')
     parameter_widget = parameter_selector.widget
 
+    global manual_selection
+    manual_selection = False
+    global manual_selection_counter
+    manual_selection_counter = 0
+
     if model_hierarchy.parameters.dim == 2:
         fig_parameter_selection_onclick, ax_parameter_selection_onclick = plt.subplots(1, 1)
         fig_parameter_selection_onclick.suptitle(translate('Selection from parameter space'))
@@ -454,17 +459,23 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         parameter_widget = fig_parameter_selection_onclick.canvas
 
         def onclick_param(event):
-            mu = model_hierarchy.parameters.parse([event.xdata, event.ydata])
-            do_parameter_update(mu, s_out=statistics_out)
-            ax_parameter_selection_onclick.scatter([event.xdata], [event.ydata], c=colors[-1])
-            fig_parameter_selection_onclick.canvas.draw()
+            if not (event.xdata is None or event.ydata is None):
+                mu = model_hierarchy.parameters.parse([event.xdata, event.ydata])
+                global manual_selection
+                manual_selection = True
+                global manual_selection_counter
+                manual_selection_counter = manual_selection_counter + 1
+                mod_num = do_parameter_update(mu, s_out=statistics_out)
+                manual_selection = False
+                ax_parameter_selection_onclick.scatter([event.xdata], [event.ydata], c=colors[mod_num])
+                fig_parameter_selection_onclick.canvas.draw()
 
         cid = fig_parameter_selection_onclick.canvas.mpl_connect('button_press_event', onclick_param)
 
         def reset_fig_parameter_selection_onclick():
             ax_parameter_selection_onclick.clear()
             assert len(parameter_bounds) == 2
-            fig_parameter_selection_onclick.set_figwidth(fig_width)
+            fig_parameter_selection_onclick.set_figwidth(fig_width / 2.)
             fig_parameter_selection_onclick.set_figheight(fig_height)
             ax_parameter_selection_onclick.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
             ax_parameter_selection_onclick.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
@@ -472,6 +483,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             ax_parameter_selection_onclick.set_ylabel(str(list(model_hierarchy.parameters.keys())[1]))
             fig_parameter_selection_onclick.tight_layout()
             parameter_widget.draw()
+            global manual_selection_counter
+            manual_selection_counter = 0
 
         list_of_reset_functions.append(reset_fig_parameter_selection_onclick)
 
@@ -636,10 +649,35 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     left_pane.append(Accordion(titles=[translate('Evaluation statistics')],
                                children=[statistics_out], selected_index=0))
 
+    if has_output:
+        fig_parameter_selection_output_values, ax_parameter_selection_output_values = plt.subplots(1, 1)
+        fig_parameter_selection_output_values.suptitle(translate('Objective function value'))
+        fig_parameter_selection_output_values.canvas.header_visible = False
+        parameter_selection_output_values_widget = fig_parameter_selection_output_values.canvas
+
+        def reset_fig_parameter_selection_output_values():
+            ax_parameter_selection_output_values.clear()
+            fig_parameter_selection_output_values.canvas.header_visible = False
+            fig_parameter_selection_output_values.set_figwidth(fig_width / 2.)
+            fig_parameter_selection_output_values.set_figheight(fig_height)
+            fig_parameter_selection_output_values.tight_layout()
+            fig_parameter_selection_output_values.legends = []
+            for k, name in enumerate(model_names):
+                ax_parameter_selection_output_values.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
+            ax_parameter_selection_output_values.legend(framealpha=1.)
+            parameter_selection_output_values_widget .draw()
+
+        list_of_reset_functions.append(reset_fig_parameter_selection_output_values)
+
     # Scenarios
-    scenarios = [parameter_widget]
+    if has_output:
+        scenarios = [HBox([parameter_widget, parameter_selection_output_values_widget])]
+    else:
+        scenarios = [parameter_widget]
     scenarios_titles = [parameter_title]
     scenarios_numbers = {'manual_parameter_selection': 0}
+    global optimization_initialized
+    optimization_initialized = False
     ## Parameter optimization
     if objective_function:
         global optimization_iterations
@@ -660,8 +698,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
         if model_hierarchy.parameters.dim == 2:
             fig_parameter_optimization, axs = plt.subplots(1, 2)
-            ax_objective_functional_value = axs[0]
-            ax_current_optimization_parameter = axs[1]
+            ax_objective_functional_value = axs[1]
+            ax_current_optimization_parameter = axs[0]
         else:
             fig_parameter_optimization, ax_objective_functional_value = plt.subplots(1, 1)
         parameter_optimization_widget = fig_parameter_optimization.canvas
@@ -675,6 +713,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     fig_parameter_optimization.colorbar(sm, ax=ax_current_optimization_parameter)
 
         def reset_fig_parameter_optimization():
+            global optimization_initialized
+            optimization_initialized = False
+            button_start_optimization.disabled = True
+
             ax_objective_functional_value.clear()
             ax_objective_functional_value.set_title(translate('Objective function value'))
             fig_parameter_optimization.canvas.header_visible = False
@@ -728,14 +770,14 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         if output.shape == (1,) or output_function:
             output_scalar = True
             if output_function:
-                output = output_function(output)
+                output = output_function(output, mu)
 
             mean_estimates = []
 
             if model_hierarchy.parameters.dim == 2:
                 fig_output, axs = plt.subplots(1, 2)
-                ax_output = axs[0]
-                ax_monte_carlo_samples = axs[1]
+                ax_output = axs[1]
+                ax_monte_carlo_samples = axs[0]
                 if model_hierarchy.parameters.dim == 2:
                     if density_function_monte_carlo:
                         x = np.linspace(parameter_bounds[0][0], parameter_bounds[0][1], 500)
@@ -757,7 +799,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 ax_output.clear()
                 if model_hierarchy.parameters.dim == 2:
                     ax_monte_carlo_samples.clear()
-                    ax_monte_carlo_samples.scatter([], [], c=colors[-1], label=translate('Samples'))
+                    for k, name in enumerate(model_names):
+                        ax_monte_carlo_samples.scatter([], [], c=colors[k], label=name)
                     ax_monte_carlo_samples.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
                     ax_monte_carlo_samples.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
                     ax_monte_carlo_samples.set_xlabel(str(list(model_hierarchy.parameters.keys())[0]))
@@ -831,7 +874,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     mu = parameter_space.sample_randomly()
                 else:
                     mu = model_hierarchy.parameters.parse(random_sampling_function())
-                do_parameter_update(mu, s_out)
+                if parameter_space.contains(mu):
+                    do_parameter_update(mu, s_out)
+                else:
+                    pass
 
         def do_start_monte_carlo(_):
             global monte_carlo_running
@@ -842,6 +888,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             if objective_function:
                 button_start_optimization.disabled = True
                 button_stop_optimization.disabled = True
+                button_initialization_optimization.disabled = True
             scenarios_accordion.children[0].set_title(scenarios_numbers['monte_carlo'],
                                                       f'{translate("Running")}: {translate("Monte Carlo estimation")}')
 
@@ -858,8 +905,11 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             button_start_monte_carlo.disabled = False
             button_stop_monte_carlo.disabled = True
             if objective_function:
-                button_start_optimization.disabled = False
+                global optimization_initialized
+                if optimization_initialized:
+                    button_start_optimization.disabled = False
                 button_stop_optimization.disabled = True
+                button_initialization_optimization.disabled = False
             scenarios_accordion.children[0].set_title(scenarios_numbers['monte_carlo'],
                                                       translate('Monte Carlo estimation'))
 
@@ -883,7 +933,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         def run_optimization():
             from scipy.optimize import minimize as scipy_optimize
             global initial_guess
-            while True:
+            global optimization_running
+            while optimization_running:
                 try:
                     optimization_results = scipy_optimize(partial(do_parameter_update, s_out=statistics_out),
                                                           x0=initial_guess, method=optimization_method,
@@ -894,13 +945,14 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 except OptimizationInterruptedError:
                     last_mu = collected_optimization_data[-1]['point']
                     initial_guess = last_mu.to_numpy()
-                    global optimization_running
                     optimization_running = False
+                    break
 
         def do_initialization_optimization(_):
-            button_start_optimization.disabled = False
             global optimization_iterations
             optimization_iterations = 0
+            global optimization_initialized
+            optimization_initialized = True
 
             if initial_parameter:
                 reset_fig_parameter_optimization()
@@ -918,6 +970,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 optimization_interrupted = False
                 do_parameter_update(initial_parameter, s_out=statistics_out)
                 optimization_running = False
+            button_start_optimization.disabled = False
 
         def do_start_optimization(_):
             global optimization_running
@@ -1004,7 +1057,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         if has_output and output_scalar:
             output = data['output'].ravel()
             if output_function:
-                output = output_function(output)
+                output = output_function(output, mu)
 
             global monte_carlo_running
             if monte_carlo_running:
@@ -1014,10 +1067,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 monte_carlo_counter = monte_carlo_counter + 1
                 ax_output.scatter([monte_carlo_counter], [output], c=colors[mod_num], marker=marker_styles[1])
                 if model_hierarchy.parameters.dim == 2:
-                    ax_monte_carlo_samples.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]], c=colors[-1])
+                    ax_monte_carlo_samples.scatter([mu.to_numpy()[0]], [mu.to_numpy()[1]], c=colors[mod_num])
                 low, high = ax_output.get_ylim()
                 ax_output.set_ylim(min(low, output), max(high, output))
-                output_widget.draw()
 
                 current_number_samples.value = str(len(outputs))
                 global inputs_to_outputs
@@ -1030,6 +1082,16 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 current_estimated_variance.value = str(np.var(np.array(outputs), axis=0))
                 line_mean_estimates.set_data(np.array(inputs_to_outputs), np.array(mean_estimates))
                 output_widget.draw()
+
+            global manual_selection
+            if manual_selection:
+                global manual_selection_counter
+                ax_parameter_selection_output_values.scatter([manual_selection_counter], [output],
+                                                             c=colors[mod_num], marker=marker_styles[1])
+                low, high = ax_parameter_selection_output_values.get_ylim()
+                ax_parameter_selection_output_values.set_ylim(min(low, output), max(high, output))
+                parameter_selection_output_values_widget.draw()
+
 
         for k, (est_err, name) in enumerate(zip(data['error_estimates'], model_names)):
             if est_err is not None:
@@ -1075,7 +1137,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     global optimization_iterations
                     optimization_iterations = optimization_iterations + 1
 
-                    quantity_of_interest = objective_function(model_hierarchy, mu)
+                    mu = model_hierarchy.parameters.parse(mu)
+                    output = model_hierarchy.output(mu).ravel()
+                    quantity_of_interest = objective_function(output, mu)
                     current_objective_function_value.value = str(quantity_of_interest)
                     current_optimization_parameter.value = str(mu.to_numpy())
 
@@ -1103,10 +1167,18 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     collected_optimization_data.append({'point': mu, 'val': quantity_of_interest})
                     return quantity_of_interest
 
+        return mod_num
+
     def do_manual_parameter_update(mu, s_out):
         global initial_guess
         initial_guess = mu.to_numpy()
-        return do_parameter_update(mu, s_out)
+        global manual_selection
+        manual_selection = True
+        global manual_selection_counter
+        manual_selection_counter = manual_selection_counter + 1
+        res = do_parameter_update(mu, s_out)
+        manual_selection = False
+        return res
 
     parameter_selector.on_change(partial(do_manual_parameter_update, s_out=statistics_out))
 

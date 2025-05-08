@@ -2,6 +2,7 @@
 # Copyright pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (https://opensource.org/licenses/BSD-2-Clause)
 
+import numpy as np
 import time
 
 from pymor.models.interface import Model
@@ -85,7 +86,6 @@ class AdaptiveModelHierarchy(Model):
                     if i > 0:
                         self.len_previous_training_data[i-1] = len(self.training_data[i-1])
                         if len(sol) > 1:
-                            import numpy as np
                             for t, u in zip(np.linspace(0., self.models[-1].T, len(sol)), sol):
                                 self.training_data[i-1].append((mu.with_(t=t), u))
                         else:

@@ -181,7 +181,7 @@ def make_problem(regime='diffusion dominated', num_global_refines=0, spe10_perm_
         'reaction dominated': 0.7,
     }
 
-    domain = ([0, 0], [5, 1])
+    domain = ([0, 0], [2.5, 1])
     refine_factor = 2**num_global_refines
     num_grid_elements = [100*refine_factor, 20*refine_factor]
 
@@ -207,7 +207,7 @@ def make_problem(regime='diffusion dominated', num_global_refines=0, spe10_perm_
             f'(0 <= x[0])*1.*(x[0] <= 5)*({HW} <= x[1])*(x[1] <= 1)',
             dim_domain=2)}
     washcoat = {
-        'dune': GF(grid['dune'], IndicatorFunction([([[0, 5], [0, HW]], [1.]),])),
+        'dune': GF(grid['dune'], IndicatorFunction([([[0, domain[1][0]], [0, HW]], [1.]),])),
         'pymor': ExpressionFunction(
             f'(0 <= x[0])*1.*(x[0] <= 5)*(0 <= x[1])*(x[1] <= {HW})',
             dim_domain=2)}
@@ -217,7 +217,7 @@ def make_problem(regime='diffusion dominated', num_global_refines=0, spe10_perm_
             f'(0-{BL} <= x[0])*1.*(x[0] <= 0+{BL})*({HW} <= x[1])*(x[1] <= 1)',
             dim_domain=2)}
     outflow = {
-        'dune': GF(grid['dune'], GF(grid['dune'], IndicatorFunction([([[5-BL, 5+BL], [HW, 1]], [1.]),]))),
+        'dune': GF(grid['dune'], GF(grid['dune'], IndicatorFunction([([[domain[1][0]-BL, domain[1][0]+BL], [HW, 1]], [1.]),]))),
         'pymor': ExpressionFunction(
             f'(5-{BL} <= x[0])*1.*(x[0] <= 5+{BL})*({HW} <= x[1])*(x[1] <= 1)',
             dim_domain=2)}
@@ -249,7 +249,7 @@ def make_problem(regime='diffusion dominated', num_global_refines=0, spe10_perm_
                     functions=[washcoat['dune'],],
                     coefficients=[ProjectionParameterFunctional('Da'),]),
                 dirichlet_data=inflow['dune'],
-                neumann_data=ConstantFunction(0, dim_domain=2),
+                neumann_data=ConstantFunction(0., dim_domain=2),
                 outputs=(('l2_boundary', outflow['dune']*GF(grid['dune'], 1./(1 - HW))),),
                 name='Spe10ChannelProblem',
                 data_approximation_order=0),

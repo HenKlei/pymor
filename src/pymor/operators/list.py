@@ -98,12 +98,19 @@ class LinearComplexifiedListVectorArrayOperatorBase(ListVectorArrayOperatorBase)
         return self.range.vector_type(real_part, imag_part)
 
     def _apply_inverse_one_vector(self, v, mu=None, initial_guess=None, least_squares=False, prepare_data=None):
-        real_part = self._real_apply_inverse_one_vector(v.real_part, mu=mu,
-                                                        initial_guess=(initial_guess.real_part
-                                                                       if initial_guess is not None else None),
-                                                        least_squares=least_squares,
-                                                        prepare_data=prepare_data)
-        if v.imag_part is not None:
+        if hasattr(v, "real_part"):
+            real_part = self._real_apply_inverse_one_vector(v.real_part, mu=mu,
+                                                            initial_guess=(initial_guess.real_part
+                                                                           if initial_guess is not None else None),
+                                                            least_squares=least_squares,
+                                                            prepare_data=prepare_data)
+        else:
+            real_part = self._real_apply_inverse_one_vector(v, mu=mu,
+                                                            initial_guess=(initial_guess.real_part
+                                                                           if initial_guess is not None else None),
+                                                            least_squares=least_squares,
+                                                            prepare_data=prepare_data)
+        if hasattr(v, "imag_part") and v.imag_part is not None:
             imag_part = self._real_apply_inverse_one_vector(v.imag_part, mu=mu,
                                                             initial_guess=(initial_guess.imag_part
                                                                            if initial_guess is not None else None),

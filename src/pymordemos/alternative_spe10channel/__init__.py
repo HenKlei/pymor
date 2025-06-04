@@ -30,6 +30,7 @@ from pymor.discretizers.builtin.cg import discretize_instationary_cg as discreti
 from pymor.discretizers.builtin.grids.boundaryinfos import GenericBoundaryInfo
 from pymor.discretizers.builtin.grids.rect import RectGrid
 from pymor.discretizers.dunegdt.cg import _discretize_instationary_cg_dune as discretize_instationary_cg_dune
+from pymor.discretizers.dunegdt.cg import _discretize_stationary_cg_dune as discretize_stationary_cg_dune
 from pymor.discretizers.dunegdt.functions import DuneFunction, DuneGridFunction, LincombDuneGridFunction
 from pymor.discretizers.dunegdt.problems import InstationaryDuneProblem, StationaryDuneProblem
 from pymor.models.basic import InstationaryModel
@@ -77,8 +78,10 @@ class ConvertedVisualizer():#ImmutableObject):
         #self.__auto_init(locals())
 
     def visualize(self, U, fig_width=10, fig_height=3, extent=(0, 1, 0, 1), *args, **kwargs):
-        assert len(U) == 1
-        v = U[0].to_numpy()
+        if len(U) == 1:
+            v = U[0].to_numpy()
+        else:
+            v = U
         v = v.reshape(self.num_grid_elements[1]+1, self.num_grid_elements[0]+1)
         v = np.array(np.flip(v, 0))
 
@@ -153,7 +156,7 @@ def dune_function_to_pymor(func, grid, num_grid_elements, bounding_box):
 
 # -
 
-def make_problem(regime='diffusion dominated', num_global_refines=0, spe10_perm_max=1, channel_initially_filled=False):
+def make_problem(regime='diffusion dominated', num_global_refines=0, spe10_perm_max=100, channel_initially_filled=False):
     """Creates problem.
 
     Parameters
@@ -181,7 +184,7 @@ def make_problem(regime='diffusion dominated', num_global_refines=0, spe10_perm_
         'reaction dominated': 0.7,
     }
 
-    domain = ([0, 0], [2.5, 1])
+    domain = ([0, 0], [5, 2.5])
     refine_factor = 2**num_global_refines
     num_grid_elements = [100*refine_factor, 20*refine_factor]
 
@@ -201,23 +204,26 @@ def make_problem(regime='diffusion dominated', num_global_refines=0, spe10_perm_
 
     BL = 1e-7
     HW = 0.34
+    WL = 1.
+    WU = 1.5
     channel = {
-        'dune': GF(grid['dune'], GF(grid['dune'], IndicatorFunction([([[0, domain[1][0]], [HW, 1]], [1.]),]))),
+        'dune': GF(grid['dune'], GF(grid['dune'], IndicatorFunction([([[domain[0][0], domain[1][0]], [domain[0][1], WL]], [1.]),])
+                                                  + IndicatorFunction([([[domain[0][0], domain[1][0]], [WU, domain[1][1]]], [1.]),]))),
         'pymor': ExpressionFunction(
             f'(0 <= x[0])*1.*(x[0] <= 5)*({HW} <= x[1])*(x[1] <= 1)',
             dim_domain=2)}
     washcoat = {
-        'dune': GF(grid['dune'], IndicatorFunction([([[0, domain[1][0]], [0, HW]], [1.]),])),
+        'dune': GF(grid['dune'], IndicatorFunction([([[domain[0][0], domain[1][0]], [WL, WU]], [1.]),])),
         'pymor': ExpressionFunction(
             f'(0 <= x[0])*1.*(x[0] <= 5)*(0 <= x[1])*(x[1] <= {HW})',
             dim_domain=2)}
     inflow = {
-        'dune': GF(grid['dune'], GF(grid['dune'], IndicatorFunction([([[0-BL, 0+BL], [HW, 1]], [1.]),]))),
+        'dune': GF(grid['dune'], GF(grid['dune'], IndicatorFunction([([[domain[0][0]-BL, domain[0][0]+BL], [WU, domain[1][1]]], [1.]),]))),
         'pymor': ExpressionFunction(
             f'(0-{BL} <= x[0])*1.*(x[0] <= 0+{BL})*({HW} <= x[1])*(x[1] <= 1)',
             dim_domain=2)}
     outflow = {
-        'dune': GF(grid['dune'], GF(grid['dune'], IndicatorFunction([([[domain[1][0]-BL, domain[1][0]+BL], [HW, 1]], [1.]),]))),
+        'dune': GF(grid['dune'], GF(grid['dune'], IndicatorFunction([([[domain[1][0]-BL, domain[1][0]+BL], [domain[0][1], WL]], [1.]),]))),
         'pymor': ExpressionFunction(
             f'(5-{BL} <= x[0])*1.*(x[0] <= 5+{BL})*({HW} <= x[1])*(x[1] <= 1)',
             dim_domain=2)}
@@ -235,22 +241,59 @@ def make_problem(regime='diffusion dominated', num_global_refines=0, spe10_perm_
         result[..., 0] = channel['pymor'].evaluate(x)
         return result
 
+    diffusion = GF(grid['dune'], channel['dune'] + washcoat['dune'] * spe10_perm['dune'], dim_range=(Dim(2), Dim(2)))
+
+
+    boundary_info_darcy = FunctionBasedBoundaryInfo(grid['dune'], default_boundary_type=NeumannBoundary())
+    boundary_info_darcy.register_new_function(inflow['dune'], DirichletBoundary())
+    boundary_info_darcy.register_new_function(outflow['dune'], DirichletBoundary())
+    darcy_problem = StationaryDuneProblem(grid['dune'],
+                                          boundary_info_darcy,
+                                          rhs=ConstantFunction(0, dim_domain=2),
+                                          diffusion=diffusion,
+                                          dirichlet_data=inflow['dune'],#ConstantFunction(1., dim_domain=2),
+                                          neumann_data=ConstantFunction(0., dim_domain=2),
+                                          name='DarcyProblem',
+                                          data_approximation_order=0
+                                          )
+    darcy_fom, darcy_fom_data = discretize_stationary_cg_dune(darcy_problem, order=1)
+    p_h = darcy_fom.solve()
+
+    #darcy_fom.visualize(p_h)
+
+    from dune.gdt import DiscreteFunction
+
+    V_h = darcy_fom_data['space']
+    weight = diffusion
+    penalty_parameter = 16.
+    symmetry_factor = 1.
+    from dune.gdt import LaplaceIpdgFluxReconstructionOperator, RaviartThomasSpace
+
+    RT_0 = RaviartThomasSpace(grid['dune'], order=0)
+
+    flux_reconstruction = LaplaceIpdgFluxReconstructionOperator(
+        grid['dune'], V_h, RT_0, symmetry_factor, penalty_parameter, penalty_parameter, diffusion, weight)
+    flux_reconstruction.assemble()
+
+    t_h = DiscreteFunction(RT_0, 't_h')
+    flux_reconstruction.apply(p_h.impl._list[0].impl.impl, t_h.dofs.vector)
+
     problem = {
         'dune': InstationaryDuneProblem(
             stationary_part=StationaryDuneProblem(
                 grid['dune'],
                 boundary_info['dune'],
                 rhs=ConstantFunction(0, dim_domain=2),
-                diffusion=channel['dune'] + washcoat['dune']*spe10_perm['dune'],
+                diffusion=diffusion,
                 advection=LincombDuneGridFunction(
-                    functions=[GF(grid['dune'], [1., 0.])*channel['dune'],],
+                    functions=[t_h, ],
                     coefficients=[ProjectionParameterFunctional('Pe'),]),
                 reaction=LincombDuneGridFunction(
                     functions=[washcoat['dune'],],
                     coefficients=[ProjectionParameterFunctional('Da'),]),
                 dirichlet_data=inflow['dune'],
                 neumann_data=ConstantFunction(0., dim_domain=2),
-                outputs=(('l2_boundary', outflow['dune']*GF(grid['dune'], 1./(1 - HW))),),
+                outputs=(('l2_boundary', outflow['dune']*GF(grid['dune'], 1. / (domain[0][1] - WL))),),
                 name='Spe10ChannelProblem',
                 data_approximation_order=0),
             initial_data=inflow['dune'] if not channel_initially_filled else channel['dune'],
@@ -274,7 +317,7 @@ def make_problem(regime='diffusion dominated', num_global_refines=0, spe10_perm_
     parameter_space = parameter_ranges[regime]
     mu_bar = parameter_space.parameters.parse({kk: vv for kk, (vv, _) in parameter_space.ranges.items()})
 
-    return grid, num_grid_elements, boundary_info, problem, parameter_space, mu_bar
+    return grid, num_grid_elements, boundary_info, problem, parameter_space, mu_bar, p_h
 
 
 def discretize(grid, num_grid_elements, boundary_info, problem, mu_bar, nt=127):

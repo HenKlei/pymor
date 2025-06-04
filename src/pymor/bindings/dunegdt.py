@@ -22,7 +22,7 @@ if config.HAVE_DUNEGDT:
             The actual vector from dune.xt.la, usually IstlVector.
         """
 
-        def __init__(self, impl):
+        def __init__(self, impl, *args):
             self.impl = impl
 
         @classmethod
@@ -114,6 +114,9 @@ if config.HAVE_DUNEGDT:
 
         def make_vector(self, obj):
             return DuneXTVector(obj)
+
+        def real_zero_vector(self):
+            return DuneXTVector(self.dune_vector_type(self.dim, 0.))
 
         def zero_vector(self):
             return DuneXTVector(self.dune_vector_type(self.dim, 0.))

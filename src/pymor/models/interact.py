@@ -337,7 +337,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     'training': {'de': 'Training'},
                     'Outputs and estimated statistics': {'de': 'Ausgabewert und geschätzte Statistiken'},
                     'Randomly selected parameters': {'de': 'Zufällig gewählte Parameter'},
-                    'Randomly selected parameters and probability density function': {'de': 'Zufällig gewählte Parameter und Wahrscheinlichkeitsdichte'},
+                    'Randomly selected parameters and probability density function': {'de': 'Zufällig gewählte Parameter \n und Wahrscheinlichkeitsdichte'},
                     'Estimated mean': {'de': 'Geschätzter Mittelwert'},
                     'Start': {'de': 'Start'},
                     'Stop': {'de': 'Stop'},
@@ -397,20 +397,20 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                                 children=[reset_button], selected_index=0))
 
     # Tolerance
-    available_tolerances = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.]
+    available_tolerances = [1e-5, 1e-4, 1e-3, 1e-2]
     tolerance_radio_buttons = RadioButtons(options=[(f'{t:.0e}', t) for t in available_tolerances],
                                            value=available_tolerances[len(available_tolerances)//2])
     radio_buttons_style = HTML(
         '<style>.widget-radio {width: auto;}'
-        '.widget-radio-box {flex-direction: row !important; float: inline-end;}'
+        '.widget-radio-box {flex-direction: row !important; float: inline-end; margin-bottom: 20px;}'
         '.widget-radio-box label {margin: 5px !important;}'
         '.widget-radio-box input {margin-left: 5px; transform: scale(1.5); margin-right: 10px;}</style>',
         layout=Layout(display='none'),
     )
     tolerance_update_button = Button(description=translate('Update'),
                                      layout=Layout(width='200px'), disabled=False, button_style='primary')
-    tolerance_label = Label(f'{translate("Current tolerance")}: ', layout={'margin': '0px 0px 0px 50px'})
-    current_tol_label = Label('', layout={'margin': '0px 0px 0px 5px'})
+    tolerance_label = Label(f'{translate("Current tolerance")}: ', layout={'margin': '10px 0px 0px 0px'})
+    current_tol_label = Label('', layout={'margin': '10px 0px 0px 5px'})
 
     global num_tol
     global tols
@@ -436,9 +436,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
     tolerance_update_button.on_click(do_tolerance_update)
     left_pane.append(Accordion(titles=[translate('Tolerance')],
-                               children=[HBox([Label(f'{translate("Choose tolerance")}:'),
-                                               tolerance_radio_buttons, radio_buttons_style,
-                                               tolerance_update_button, tolerance_label, current_tol_label])],
+                               children=[VBox([HBox([Label(f'{translate("Choose tolerance")}:'),
+                                                     tolerance_radio_buttons, radio_buttons_style,
+                                                     tolerance_update_button]),
+                                               HBox([tolerance_label, current_tol_label])])],
                                selected_index=0))
 
     # Parameter selector
@@ -594,8 +595,9 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         global line_tolerances
         line_tolerances = ax_error_estimates.plot(inputs_to_tolerances, tolerances, c=colors[-1],
                                                   label=translate('Tolerance'))[0]
-        ax_error_estimates.legend(framealpha=1.)
+        ax_error_estimates.legend(framealpha=1., ncols=3, bbox_to_anchor=(0.5, -0.1), loc='upper center')
         ax_error_estimates.set_yscale('symlog', linthresh=10**(-8))
+        fig_error_estimates.subplots_adjust(bottom=0.2)
         error_estimates_widget.draw()
 
     list_of_reset_functions.append(reset_fig_error_estimates)
@@ -623,7 +625,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             ax_timings[1].bar([0], [0], color=colors[k], edgecolor='black', hatch='//',
                               label=f'{name} {translate("training")}', width=0)
         ax_timings[0].set_yscale('symlog')
-        fig_timings.legend(framealpha=1.)
+        fig_timings.legend(framealpha=1., ncols=3, bbox_to_anchor=(0.5, 0.02), loc='lower center')
+        fig_timings.subplots_adjust(bottom=0.3)
         timings_widget.draw()
 
     list_of_reset_functions.append(reset_fig_timings)
@@ -743,7 +746,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                                                               [optimal_parameter.to_numpy()[1]],
                                                               c='red', marker='x',
                                                               label=f'{translate("Optimum")} {optimal_parameter}')
-                ax_current_optimization_parameter.legend(framealpha=1.)
+                ax_current_optimization_parameter.legend(framealpha=1., bbox_to_anchor=(0.5, -0.75), loc='upper center')
                 ax_current_optimization_parameter.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
                 ax_current_optimization_parameter.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
                 ax_current_optimization_parameter.set_xlabel(str(list(model_hierarchy.parameters.keys())[0]))
@@ -810,7 +813,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                                                       vmin=np.min(density), vmax=np.max(density),
                                                       extent=(parameter_bounds[0][0], parameter_bounds[0][1],
                                                               parameter_bounds[1][0], parameter_bounds[1][1]))
-                    ax_monte_carlo_samples.legend(framealpha=1.)
+                    #ax_monte_carlo_samples.legend(framealpha=1., bbox_to_anchor=(0.5, -0.75), loc='upper center')
                     if density_function_monte_carlo:
                         ax_monte_carlo_samples.set_title(translate('Randomly selected parameters and probability density function'))
                     else:
@@ -828,7 +831,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 global line_mean_estimates
                 line_mean_estimates = ax_output.plot([], [], c=colors[-1],
                                                      marker=marker_styles[1])[0]
-                ax_output.legend(framealpha=1.)
+                ax_output.legend(framealpha=1., ncols=4, bbox_to_anchor=(0, -0.15), loc='upper center')
+                fig_output.subplots_adjust(bottom=0.225)
                 output_widget.draw()
                 global outputs
                 outputs = []
@@ -1150,7 +1154,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                                                                   label=f'{translate("Tolerance")}: {tols[-1]:.3e}')
                         handles, labels = ax_current_optimization_parameter.get_legend_handles_labels()
                         by_label = dict(zip(labels, handles))
-                        ax_current_optimization_parameter.legend(by_label.values(), by_label.keys(), framealpha=1.)
+                        ax_current_optimization_parameter.legend(by_label.values(), by_label.keys(), framealpha=1., bbox_to_anchor=(0.5, -0.75), loc='upper center')
                         parameter_optimization_widget.draw()
 
                     ax_objective_functional_value.scatter([optimization_iterations], [quantity_of_interest],

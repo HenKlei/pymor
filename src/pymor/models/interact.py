@@ -453,6 +453,51 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     global manual_selection_counter
     manual_selection_counter = 0
 
+    button_start_manual_selection = Button(description=translate('Start'), button_style='primary',
+                                           layout=Layout(width='100px', height='50px'), disabled=False)
+    button_stop_manual_selection = Button(description=translate('Stop'), button_style='primary',
+                                          layout=Layout(width='100px', height='50px'), disabled=True)
+
+    global manual_selection_running
+    manual_selection_running = False
+
+    def do_start_manual_selection(_):
+        global manual_selection_running
+        if not manual_selection_running:
+            manual_selection_running = True
+        button_start_manual_selection.disabled = True
+        button_stop_manual_selection.disabled = False
+        if objective_function:
+            button_start_optimization.disabled = True
+            button_stop_optimization.disabled = True
+            button_initialization_optimization.disabled = True
+        if has_output and output_scalar:
+            button_start_monte_carlo.disabled = True
+            button_stop_monte_carlo.disabled = True
+        scenarios_accordion.children[0].set_title(scenarios_numbers['manual_parameter_selection'],
+                                                  f'{translate("Running")}: {translate("Manual parameter selection")}')
+
+    def do_stop_manual_selection(_):
+        global manual_selection_running
+        if manual_selection_running:
+            manual_selection_running = False
+        button_start_manual_selection.disabled = False
+        button_stop_manual_selection.disabled = True
+        if objective_function:
+            global optimization_initialized
+            if optimization_initialized:
+                button_start_optimization.disabled = False
+            button_stop_optimization.disabled = True
+            button_initialization_optimization.disabled = False
+        if has_output and output_scalar:
+            button_start_monte_carlo.disabled = False
+            button_stop_monte_carlo.disabled = True
+        scenarios_accordion.children[0].set_title(scenarios_numbers['manual_parameter_selection'],
+                                                  translate('Manual parameter selection'))
+
+    button_start_manual_selection.on_click(do_start_manual_selection)
+    button_stop_manual_selection.on_click(do_stop_manual_selection)
+
     if model_hierarchy.parameters.dim == 2:
         fig_parameter_selection_onclick, ax_parameter_selection_onclick = plt.subplots(1, 1)
         fig_parameter_selection_onclick.suptitle(translate('Selection from parameter space'))
@@ -460,7 +505,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         parameter_widget = fig_parameter_selection_onclick.canvas
 
         def onclick_param(event):
-            if not (event.xdata is None or event.ydata is None):
+            global manual_selection_running
+            if (not (event.xdata is None or event.ydata is None)) and manual_selection_running:
                 mu = model_hierarchy.parameters.parse([event.xdata, event.ydata])
                 global manual_selection
                 manual_selection = True
@@ -667,16 +713,18 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             fig_parameter_selection_output_values.legends = []
             for k, name in enumerate(model_names):
                 ax_parameter_selection_output_values.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
-            ax_parameter_selection_output_values.legend(framealpha=1.)
+            ax_parameter_selection_output_values.legend(framealpha=1., ncols=3, bbox_to_anchor=(0.5, -0.1), loc='upper center')
+            fig_parameter_selection_output_values.subplots_adjust(bottom=0.2)
             parameter_selection_output_values_widget .draw()
 
         list_of_reset_functions.append(reset_fig_parameter_selection_output_values)
 
     # Scenarios
     if has_output:
-        scenarios = [HBox([parameter_widget, parameter_selection_output_values_widget])]
+        scenarios = [VBox([HBox([button_start_manual_selection, button_stop_manual_selection]),
+                           HBox([parameter_widget, parameter_selection_output_values_widget])])]
     else:
-        scenarios = [parameter_widget]
+        scenarios = [VBox([HBox([button_start_manual_selection, button_stop_manual_selection]), parameter_widget])]
     scenarios_titles = [parameter_title]
     scenarios_numbers = {'manual_parameter_selection': 0}
     global optimization_initialized
@@ -893,6 +941,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 button_start_optimization.disabled = True
                 button_stop_optimization.disabled = True
                 button_initialization_optimization.disabled = True
+            button_start_manual_selection.disabled = True
+            button_stop_manual_selection.disabled = True
             scenarios_accordion.children[0].set_title(scenarios_numbers['monte_carlo'],
                                                       f'{translate("Running")}: {translate("Monte Carlo estimation")}')
 
@@ -914,6 +964,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     button_start_optimization.disabled = False
                 button_stop_optimization.disabled = True
                 button_initialization_optimization.disabled = False
+            button_start_manual_selection.disabled = False
+            button_stop_manual_selection.disabled = True
             scenarios_accordion.children[0].set_title(scenarios_numbers['monte_carlo'],
                                                       translate('Monte Carlo estimation'))
 
@@ -988,6 +1040,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             if has_output and output_scalar:
                 button_start_monte_carlo.disabled = True
                 button_stop_monte_carlo.disabled = True
+            button_start_manual_selection.disabled = True
+            button_stop_manual_selection.disabled = True
             scenarios_accordion.children[0].set_title(scenarios_numbers['parameter_optimization'],
                                                       f'{translate("Running")}: {translate("Parameter optimization")}')
 
@@ -1007,6 +1061,8 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             if has_output and output_scalar:
                 button_start_monte_carlo.disabled = False
                 button_stop_monte_carlo.disabled = True
+            button_start_manual_selection.disabled = False
+            button_stop_manual_selection.disabled = True
             scenarios_accordion.children[0].set_title(scenarios_numbers['parameter_optimization'],
                                                       translate('Parameter optimization'))
 

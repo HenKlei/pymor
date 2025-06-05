@@ -288,7 +288,7 @@ def interact(model, parameter_space, show_solution=True, visualizer=None, transf
     return widget
 
 
-def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, output_function=None,
+def interact_model_hierarchy(create_hierarchy, parameter_space, output_function=None,
                              objective_function=None, initial_parameter=None, optimal_parameter=None,
                              optimization_bg_image=None, optimization_bg_image_limits=None, show_solution=True,
                              visualizer=None, optimization_method='Nelder-Mead', optimization_options={},
@@ -319,7 +319,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     The created widgets as a single `ipywidget`.
     """
     translations = {'Reset': {'de': 'Zurücksetzen'},
-                    'Reset all plots (retain model hierarchy)': {'de': 'Alle Diagramme zurücksetzen (Modellhierarchie beibehalten)'},
+                    'Reset all plots and the model hierarchy': {'de': 'Alle Diagramme und die Modellhierarchie zurücksetzen'},
                     'Update': {'de': 'Aktualisieren'},
                     'Current tolerance': {'de': 'Aktuelle Rechengenauigkeit'},
                     'Tolerance': {'de': 'Rechengenauigkeit'},
@@ -335,7 +335,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     'Parameter optimization': {'de': 'Parameteroptimierung'},
                     'evaluation': {'de': 'Auswertung'},
                     'training': {'de': 'Training'},
-                    'Outputs and estimated statistics': {'de': 'Ausgabewert und geschätzte Statistiken'},
+                    'Outputs and estimated mean': {'de': 'Ausgabewert und geschätzter Mittelwert'},
                     'Randomly selected parameters': {'de': 'Zufällig gewählte Parameter'},
                     'Randomly selected parameters and probability density function': {'de': 'Zufällig gewählte Parameter \n und Wahrscheinlichkeitsdichte'},
                     'Estimated mean': {'de': 'Geschätzter Mittelwert'},
@@ -360,9 +360,11 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                     'Training time': {'de': 'Trainingszeit'},
                     'Dimension of model': {'de': 'Dimension des Modells'}}
 
+    global model_hierarchy
+    model_hierarchy, model_names = create_hierarchy()
+
     def translate(phrase):
         return (translations.get(phrase, {language: phrase})).get(language, phrase)
-
 
     from IPython import get_ipython
     from matplotlib import pyplot as plt
@@ -392,8 +394,11 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         for f in list_of_reset_functions:
             f()
 
+        global model_hierarchy
+        model_hierarchy, _ = create_hierarchy()
+
     reset_button.on_click(do_reset)
-    right_pane.append(Accordion(titles=[translate('Reset all plots (retain model hierarchy)')],
+    right_pane.append(Accordion(titles=[translate('Reset all plots and the model hierarchy')],
                                 children=[reset_button], selected_index=0))
 
     # Tolerance
@@ -421,6 +426,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         num_tol = available_tolerances.index(tol)
         global tols
         tols.append(tol)
+        global model_hierarchy
         model_hierarchy.set_tolerance(tol)
         current_tol_label.value = f'{tol:.3e}'
 
@@ -507,6 +513,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         def onclick_param(event):
             global manual_selection_running
             if (not (event.xdata is None or event.ydata is None)) and manual_selection_running:
+                global model_hierarchy
                 mu = model_hierarchy.parameters.parse([event.xdata, event.ydata])
                 global manual_selection
                 manual_selection = True
@@ -526,6 +533,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             fig_parameter_selection_onclick.set_figheight(fig_height)
             ax_parameter_selection_onclick.set_xlim(parameter_bounds[0][0], parameter_bounds[0][1])
             ax_parameter_selection_onclick.set_ylim(parameter_bounds[1][0], parameter_bounds[1][1])
+            global model_hierarchy
             ax_parameter_selection_onclick.set_xlabel(str(list(model_hierarchy.parameters.keys())[0]))
             ax_parameter_selection_onclick.set_ylabel(str(list(model_hierarchy.parameters.keys())[1]))
             fig_parameter_selection_onclick.tight_layout()
@@ -683,6 +691,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     statistics_out = Output()
 
     def do_update_statistics(s_out):
+        global model_hierarchy
         temp = np.array(model_hierarchy.num_successful_calls)
         temp[temp == 0] = 1.
         data_dict = {translate('Number of evaluations'): model_hierarchy.num_successful_calls,
@@ -777,6 +786,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
             fig_parameter_optimization.legends = []
             ax_objective_functional_value.set_xlabel(translate('Optimization step'))
 
+            global model_hierarchy
             if model_hierarchy.parameters.dim == 2:
                 ax_current_optimization_parameter.clear()
                 ax_current_optimization_parameter.set_title(translate('Trajectory in parameter space'))
@@ -848,6 +858,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
             def reset_fig_outputs():
                 ax_output.clear()
+                global model_hierarchy
                 if model_hierarchy.parameters.dim == 2:
                     ax_monte_carlo_samples.clear()
                     for k, name in enumerate(model_names):
@@ -866,7 +877,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                         ax_monte_carlo_samples.set_title(translate('Randomly selected parameters and probability density function'))
                     else:
                         ax_monte_carlo_samples.set_title(translate('Randomly selected parameters'))
-                ax_output.set_title(translate('Outputs and estimated statistics'))
+                ax_output.set_title(translate('Outputs and estimated mean'))
                 fig_output.canvas.header_visible = False
                 fig_output.set_figwidth(fig_width)
                 fig_output.set_figheight(fig_height)
@@ -875,10 +886,10 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
                 for k, name in enumerate(model_names):
                     ax_output.scatter([], [], c=colors[k], marker=marker_styles[0], label=name)
                 ax_output.scatter([], [], c=colors[mod_num], marker=marker_styles[1])
-                ax_output.plot([0], [0], c=colors[-1], label=translate('Estimated mean'))
+                #ax_output.plot([], [], c=colors[-1])
                 global line_mean_estimates
                 line_mean_estimates = ax_output.plot([], [], c=colors[-1],
-                                                     marker=marker_styles[1])[0]
+                                                     marker=marker_styles[1], label=translate('Estimated mean'))[0]
                 ax_output.legend(framealpha=1., ncols=4, bbox_to_anchor=(0, -0.15), loc='upper center')
                 fig_output.subplots_adjust(bottom=0.225)
                 output_widget.draw()
@@ -921,6 +932,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
     if has_output and output_scalar:
         def run_monte_carlo(s_out):
             global monte_carlo_running
+            global model_hierarchy
             while monte_carlo_running:
                 if random_sampling_function is None:
                     mu = parameter_space.sample_randomly()
@@ -1012,6 +1024,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
 
             if initial_parameter:
                 reset_fig_parameter_optimization()
+                global model_hierarchy
                 if model_hierarchy.parameters.dim == 2:
                     ax_current_optimization_parameter.scatter([initial_parameter.to_numpy()[0]],
                                                               [initial_parameter.to_numpy()[1]],
@@ -1092,6 +1105,7 @@ def interact_model_hierarchy(model_hierarchy, parameter_space, model_names, outp
         global global_counter
         global_counter = global_counter + 1
 
+        global model_hierarchy
         mu = model_hierarchy.parameters.parse(mu)
         if 'input' in mu:
             input = mu.get_time_dependent_value('input') if mu.is_time_dependent('input') else mu['input']
